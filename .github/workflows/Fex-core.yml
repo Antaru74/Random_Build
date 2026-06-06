@@ -49,7 +49,6 @@ jobs:
       - name: Create DEB package
         run: |
           cd Build
-          # Ambil maintainer dengan format yang benar tanpa kutip bersarang
           MAINTAINER="$(git log -1 --format='%aN <%aE>')"
           VERSION="git-$(git describe --tags --always | sed 's/^v//')"
           sudo checkinstall \
@@ -65,9 +64,22 @@ jobs:
             --fstrans=yes \
             --nodoc \
             ninja install
+          
+          # Debug: list semua file .deb yang dihasilkan
+          echo "Files in $(pwd):"
+          ls -la
+          echo "Searching for .deb files..."
+          DEB_FILE=$(find . -maxdepth 1 -name "*.deb" -type f | head -n1)
+          if [[ -z "$DEB_FILE" ]]; then
+            echo "::error::No .deb file was created. Check checkinstall logs."
+            exit 1
+          fi
+          echo "Found .deb: $DEB_FILE"
+          # Rename agar mudah di-upload
+          mv "$DEB_FILE" fex-core.deb
 
       - name: Upload DEB package
         uses: actions/upload-artifact@v4
         with:
           name: fex-core-arm64-clang-${{ github.event.inputs.branch }}
-          path: Build/*.deb
+          path: Build/fex-core.deb
