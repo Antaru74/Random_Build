@@ -1,17 +1,13 @@
-name: Build FEX-core DEB package
+name: Build FEX-core DEB package (Manual - Clang)
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - 'main'
-      - 'master'
-  pull_request:
-    branches:
-      - 'main'
-      - 'master'
-  schedule:
-    - cron: '0 0 * * 0'
+    inputs:
+      branch:
+        description: 'Branch or tag to build'
+        required: true
+        default: 'main'
+        type: string
 
 jobs:
   build-fex-deb:
@@ -23,9 +19,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: FEX-Emu/FEX
+          ref: ${{ github.event.inputs.branch }}
           fetch-depth: 1
 
-      # Step 2: Install build dependencies
+      # Step 2: Install build dependencies (Clang + LLD + tools)
       - name: Install build dependencies
         run: |
           sudo apt update
@@ -40,13 +37,15 @@ jobs:
             nasm \
             python3-clang \
             libstdc++-12-dev \
-            g++-x86-64-linux-gnu \
             checkinstall
 
-      # Step 3: Configure build with CMake
+      # Step 3: Configure with CMake using Clang and LLD
       - name: Configure with CMake
         run: |
           cmake -B Build \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_LINKER=/usr/bin/ld.lld \
             -DCMAKE_INSTALL_PREFIX=/usr \
             -DCMAKE_BUILD_TYPE=Release \
             -DENABLE_LTO=True \
@@ -80,5 +79,5 @@ jobs:
       - name: Upload DEB package
         uses: actions/upload-artifact@v4
         with:
-          name: fex-core-deb
+          name: fex-core-deb-clang-${{ github.event.inputs.branch }}
           path: Build/*.deb
