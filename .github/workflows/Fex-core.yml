@@ -36,11 +36,9 @@ jobs:
             nasm \
             python3-clang \
             libstdc++-12-dev \
-            checkinstall \
-            qtbase5-dev \
-            qt5-qmake
+            checkinstall
 
-      - name: Configure with CMake (Clang + LLD, disable tests, optional disable tools)
+      - name: Configure with CMake (Clang + LLD, disable Qt5 & tools)
         run: |
           cmake -B Build \
             -DCMAKE_C_COMPILER=clang \
@@ -51,6 +49,8 @@ jobs:
             -DENABLE_LTO=True \
             -DBUILD_TESTS=False \
             -DBUILD_TOOLS=OFF \
+            -DCMAKE_DISABLE_FIND_PACKAGE_Qt5=ON \
+            -DCMAKE_DISABLE_FIND_PACKAGE_Qt5Qml=ON \
             -G Ninja
 
       - name: Build FEXCore
