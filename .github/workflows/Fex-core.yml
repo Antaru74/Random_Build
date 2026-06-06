@@ -36,9 +36,11 @@ jobs:
             nasm \
             python3-clang \
             libstdc++-12-dev \
-            checkinstall
+            checkinstall \
+            qtbase5-dev \
+            qt5-qmake
 
-      - name: Configure with CMake (Clang + LLD, tanpa tools & tests)
+      - name: Configure with CMake (Clang + LLD, disable tests, optional disable tools)
         run: |
           cmake -B Build \
             -DCMAKE_C_COMPILER=clang \
