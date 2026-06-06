@@ -19,7 +19,7 @@ jobs:
         with:
           repository: FEX-Emu/FEX
           ref: ${{ github.event.inputs.branch }}
-          fetch-depth: 1
+          fetch-depth: 0   # perlu fetch-depth:0 agar git describe bekerja
           submodules: 'recursive'
 
       - name: Install build dependencies (including Qt6)
@@ -50,7 +50,19 @@ jobs:
         run: |
           cd Build
           MAINTAINER="$(git log -1 --format='%aN <%aE>')"
-          VERSION="git-$(git describe --tags --always | sed 's/^v//')"
+          
+          # Generate valid version number (must start with digit)
+          # Try to get latest tag, else use 0.0.0
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
+          LATEST_TAG=${LATEST_TAG#v}  # remove leading v
+          COMMIT_SHORT=$(git rev-parse --short HEAD)
+          VERSION="${LATEST_TAG}+git${COMMIT_SHORT}"
+          # Ensure version starts with digit (if tag is like '2508' it's fine)
+          # If somehow still not digit, prepend 0.
+          if [[ ! "$VERSION" =~ ^[0-9] ]]; then
+            VERSION="0.${VERSION}"
+          fi
+          
           sudo checkinstall \
             --pkgname=fex-core \
             --pkgversion="$VERSION" \
@@ -65,7 +77,7 @@ jobs:
             --nodoc \
             ninja install
           
-          # Debug: list semua file .deb yang dihasilkan
+          # Debug: list files
           echo "Files in $(pwd):"
           ls -la
           echo "Searching for .deb files..."
@@ -75,7 +87,6 @@ jobs:
             exit 1
           fi
           echo "Found .deb: $DEB_FILE"
-          # Rename agar mudah di-upload
           mv "$DEB_FILE" fex-core.deb
 
       - name: Upload DEB package
