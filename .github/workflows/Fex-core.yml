@@ -22,23 +22,15 @@ jobs:
           fetch-depth: 1
           submodules: 'recursive'
 
-      - name: Install build dependencies
+      - name: Install build dependencies (including Qt6)
         run: |
           sudo apt update
           sudo apt install -y \
-            git \
-            cmake \
-            ninja-build \
-            pkgconf \
-            clang \
-            lld \
-            ccache \
-            nasm \
-            python3-clang \
-            libstdc++-12-dev \
-            checkinstall
+            git cmake ninja-build pkgconf clang lld ccache nasm python3-clang \
+            libstdc++-12-dev checkinstall \
+            qt6-base-dev qt6-declarative-dev qt6-tools-dev
 
-      - name: Configure with CMake (Clang + LLD, disable Qt5 & tools)
+      - name: Configure with CMake (Clang + LLD, disable tests)
         run: |
           cmake -B Build \
             -DCMAKE_C_COMPILER=clang \
@@ -48,9 +40,6 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DENABLE_LTO=True \
             -DBUILD_TESTS=False \
-            -DBUILD_TOOLS=OFF \
-            -DCMAKE_DISABLE_FIND_PACKAGE_Qt5=ON \
-            -DCMAKE_DISABLE_FIND_PACKAGE_Qt5Qml=ON \
             -G Ninja
 
       - name: Build FEXCore
