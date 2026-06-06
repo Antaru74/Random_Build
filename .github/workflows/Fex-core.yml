@@ -49,13 +49,16 @@ jobs:
       - name: Create DEB package
         run: |
           cd Build
+          # Ambil maintainer dengan format yang benar tanpa kutip bersarang
+          MAINTAINER="$(git log -1 --format='%aN <%aE>')"
+          VERSION="git-$(git describe --tags --always | sed 's/^v//')"
           sudo checkinstall \
             --pkgname=fex-core \
-            --pkgversion="git-$(git describe --tags --always | sed 's/^v//')" \
+            --pkgversion="$VERSION" \
             --pkgrelease="1" \
             --pkglicense="MIT" \
             --pkggroup="misc" \
-            --maintainer="'$(git log -1 --pretty=%aN <%aE>)'" \
+            --maintainer="$MAINTAINER" \
             --provides="fex-core" \
             --requires="libc6, libstdc++6" \
             --install=no \
