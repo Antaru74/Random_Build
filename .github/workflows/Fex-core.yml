@@ -1,0 +1,84 @@
+name: Build FEX-core DEB package
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'main'
+      - 'master'
+  pull_request:
+    branches:
+      - 'main'
+      - 'master'
+  schedule:
+    - cron: '0 0 * * 0'
+
+jobs:
+  build-fex-deb:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout FEX repository
+      - name: Checkout FEX repository
+        uses: actions/checkout@v4
+        with:
+          repository: FEX-Emu/FEX
+          fetch-depth: 1
+
+      # Step 2: Install build dependencies
+      - name: Install build dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            git \
+            cmake \
+            ninja-build \
+            pkgconf \
+            clang \
+            lld \
+            ccache \
+            nasm \
+            python3-clang \
+            libstdc++-12-dev \
+            g++-x86-64-linux-gnu \
+            checkinstall
+
+      # Step 3: Configure build with CMake
+      - name: Configure with CMake
+        run: |
+          cmake -B Build \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DENABLE_LTO=True \
+            -DBUILD_TESTS=False \
+            -G Ninja
+
+      # Step 4: Build FEXCore
+      - name: Build FEXCore
+        run: |
+          cmake --build Build --config Release
+
+      # Step 5: Create deb package using checkinstall
+      - name: Create DEB package
+        run: |
+          cd Build
+          sudo checkinstall \
+            --pkgname=fex-core \
+            --pkgversion="git-$(git describe --tags --always | sed 's/^v//')" \
+            --pkgrelease="1" \
+            --pkglicense="MIT" \
+            --pkggroup="misc" \
+            --maintainer="'$(git log -1 --pretty=%aN <%aE>)'" \
+            --provides="fex-core" \
+            --requires="libc6, libstdc++6" \
+            --install=no \
+            --fstrans=yes \
+            --nodoc \
+            ninja install
+
+      # Step 6: Upload deb package as artifact
+      - name: Upload DEB package
+        uses: actions/upload-artifact@v4
+        with:
+          name: fex-core-deb
+          path: Build/*.deb
