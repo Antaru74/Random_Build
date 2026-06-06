@@ -20,7 +20,7 @@ jobs:
           repository: FEX-Emu/FEX
           ref: ${{ github.event.inputs.branch }}
           fetch-depth: 1
-          submodules: 'recursive'   # 🔧 Kunci perbaikan
+          submodules: 'recursive'
 
       - name: Install build dependencies
         run: |
@@ -38,7 +38,7 @@ jobs:
             libstdc++-12-dev \
             checkinstall
 
-      - name: Configure with CMake (Clang + LLD)
+      - name: Configure with CMake (Clang + LLD, tanpa tools & tests)
         run: |
           cmake -B Build \
             -DCMAKE_C_COMPILER=clang \
@@ -48,6 +48,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DENABLE_LTO=True \
             -DBUILD_TESTS=False \
+            -DBUILD_TOOLS=OFF \
             -G Ninja
 
       - name: Build FEXCore
