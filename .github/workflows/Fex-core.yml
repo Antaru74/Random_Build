@@ -1,4 +1,4 @@
-name: Build FEX-core DEB package (ARM64 Host - Clang)
+name: Build FEX-core DEB package (ARM64 - Clang)
 
 on:
   workflow_dispatch:
@@ -11,20 +11,17 @@ on:
 
 jobs:
   build-fex-deb:
-    # Gunakan runner ARM64 (bukan x86_64)
     runs-on: ubuntu-24.04-arm
-    # Alternatif: runs-on: ubuntu-22.04-arm
 
     steps:
-      # Step 1: Checkout FEX repository
-      - name: Checkout FEX repository
+      - name: Checkout FEX repository with submodules
         uses: actions/checkout@v4
         with:
           repository: FEX-Emu/FEX
           ref: ${{ github.event.inputs.branch }}
           fetch-depth: 1
+          submodules: 'recursive'   # 🔧 Kunci perbaikan
 
-      # Step 2: Install build dependencies (Clang + LLD + tools)
       - name: Install build dependencies
         run: |
           sudo apt update
@@ -41,8 +38,7 @@ jobs:
             libstdc++-12-dev \
             checkinstall
 
-      # Step 3: Configure with CMake using Clang and LLD
-      - name: Configure with CMake
+      - name: Configure with CMake (Clang + LLD)
         run: |
           cmake -B Build \
             -DCMAKE_C_COMPILER=clang \
@@ -54,12 +50,10 @@ jobs:
             -DBUILD_TESTS=False \
             -G Ninja
 
-      # Step 4: Build FEXCore
       - name: Build FEXCore
         run: |
           cmake --build Build --config Release
 
-      # Step 5: Create deb package using checkinstall
       - name: Create DEB package
         run: |
           cd Build
@@ -77,9 +71,8 @@ jobs:
             --nodoc \
             ninja install
 
-      # Step 6: Upload deb package as artifact
       - name: Upload DEB package
         uses: actions/upload-artifact@v4
         with:
-          name: fex-core-deb-arm64-clang-${{ github.event.inputs.branch }}
+          name: fex-core-arm64-clang-${{ github.event.inputs.branch }}
           path: Build/*.deb
