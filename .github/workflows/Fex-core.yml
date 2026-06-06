@@ -1,4 +1,4 @@
-name: Build FEX-core DEB package (Manual - Clang)
+name: Build FEX-core DEB package (ARM64 Host - Clang)
 
 on:
   workflow_dispatch:
@@ -11,7 +11,9 @@ on:
 
 jobs:
   build-fex-deb:
-    runs-on: ubuntu-latest
+    # Gunakan runner ARM64 (bukan x86_64)
+    runs-on: ubuntu-24.04-arm
+    # Alternatif: runs-on: ubuntu-22.04-arm
 
     steps:
       # Step 1: Checkout FEX repository
@@ -79,5 +81,5 @@ jobs:
       - name: Upload DEB package
         uses: actions/upload-artifact@v4
         with:
-          name: fex-core-deb-clang-${{ github.event.inputs.branch }}
+          name: fex-core-deb-arm64-clang-${{ github.event.inputs.branch }}
           path: Build/*.deb
