@@ -1,0 +1,146 @@
+name: Build FEX-core DEB (ARM64 Linux) - Manual dpkg-deb
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch or tag to build (e.g., main, v0.1.0)'
+        required: true
+        default: 'main'
+        type: string
+      version_suffix:
+        description: 'Optional version suffix (e.g., alpha1)'
+        required: false
+        default: ''
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UPSTREAM_REPO: FEX-Emu/FEX
+  PKG_NAME:      fex-emu        # Nama paket sesuai instruksi
+  STAGING_DIR:   /tmp/fex-package
+
+jobs:
+  build:
+    name: Build DEB package
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+
+    steps:
+      - name: Install build dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            build-essential cmake git ninja-build pkg-config \
+            clang lld \
+            libasound2-dev libepoxy-dev libgl1-mesa-dev libsdl2-dev \
+            libudev-dev uuid-dev zlib1g-dev liburing-dev \
+            dpkg-dev
+
+      - name: Checkout FEX source with submodules
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.UPSTREAM_REPO }}
+          ref: ${{ inputs.branch }}
+          path: src
+          fetch-depth: 0
+          submodules: 'recursive'
+
+      - name: Get version info
+        id: version
+        working-directory: src
+        run: |
+          COMMIT_SHORT=$(git rev-parse --short HEAD)
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.0.0")
+          SUFFIX="${{ inputs.version_suffix }}"
+          if [ -n "$SUFFIX" ]; then
+            VERSION="${LAST_TAG}+${SUFFIX}"
+          else
+            VERSION="${LAST_TAG}"
+          fi
+          # Pastikan versi diawali digit (bukan persyaratan dpkg-deb, tapi baik)
+          if ! [[ "$VERSION" =~ ^[0-9] ]]; then
+            VERSION="0.${VERSION}"
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "commit=${COMMIT_SHORT}" >> $GITHUB_OUTPUT
+
+      - name: Configure CMake (Clang + LLD)
+        working-directory: src
+        run: |
+          mkdir -p Build
+          cd Build
+          CC=clang CXX=clang++ cmake \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DUSE_LINKER=lld \
+            -DENABLE_LTO=True \
+            -DBUILD_TESTING=False \
+            -DENABLE_ASSERTIONS=False \
+            -G Ninja ..
+
+      - name: Build FEXCore with Ninja
+        working-directory: src/Build
+        run: ninja
+
+      - name: Create staging directory and install
+        run: |
+          # Bersihkan staging jika sudah ada
+          sudo rm -rf ${{ env.STAGING_DIR }}
+          mkdir -p ${{ env.STAGING_DIR }}/usr
+          # Install ke staging
+          DESTDIR=${{ env.STAGING_DIR }} ninja -C src/Build install
+
+      - name: Create Debian metadata (control file)
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir -p ${{ env.STAGING_DIR }}/DEBIAN
+          cat << 'EOF' > ${{ env.STAGING_DIR }}/DEBIAN/control
+          Package: ${{ env.PKG_NAME }}
+          Version: ${VERSION}
+          Architecture: arm64
+          Maintainer: GitHub Actions <actions@github.com>
+          Section: utils
+          Priority: optional
+          Depends: libc6 (>= 2.34), zlib1g, libsdl2-2.0-0, liburing2
+          Description: Fast usermode x86 and x86-64 emulator for Arm64 Linux
+           FEX allows you to run x86 and x86-64 applications on ARM64 processors.
+          EOF
+          # Ganti placeholder VERSION dengan nilai sebenarnya
+          sed -i "s/\${VERSION}/$VERSION/g" ${{ env.STAGING_DIR }}/DEBIAN/control
+
+      - name: Build .deb package using dpkg-deb
+        run: |
+          DEB_NAME="${{ env.PKG_NAME }}_${{ steps.version.outputs.version }}_arm64.deb"
+          dpkg-deb --build ${{ env.STAGING_DIR }} "$DEB_NAME"
+          echo "DEB_FILE=$DEB_NAME" >> $GITHUB_ENV
+          # Tampilkan info
+          ls -la "$DEB_NAME"
+          file "$DEB_NAME"
+
+      - name: Upload DEB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PKG_NAME }}-${{ steps.version.outputs.version }}-arm64
+          path: ${{ env.DEB_FILE }}
+          if-no-files-found: error
+
+      - name: (Optional) Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.PKG_NAME }}-${{ steps.version.outputs.version }}
+          name: "FEX-Emu ${{ steps.version.outputs.version }}"
+          body: |
+            Built from branch/commit: ${{ inputs.branch }}
+            Commit: ${{ steps.version.outputs.commit }}
+            Architecture: ARM64 (aarch64)
+            Compiler: Clang + LLD
+            LTO: enabled
+          files: ${{ env.DEB_FILE }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
