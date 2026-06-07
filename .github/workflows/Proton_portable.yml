@@ -1,0 +1,133 @@
+name: Build Proton Portable
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_name:
+        description: 'Nama build Proton'
+        required: true
+        default: 'Proton-Portable-Custom'
+      proton_branch:
+        description: 'Branch Proton yang akan dibangun'
+        required: true
+        default: 'master'
+
+jobs:
+  build-proton:
+    runs-on: ubuntu-22.04
+    
+    steps:
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          cmake \
+          git \
+          python3 \
+          python3-pip \
+          meson \
+          ninja-build \
+          patchelf \
+          ccache \
+          libglib2.0-dev \
+          libgdk-pixbuf2.0-dev \
+          libxml2-dev \
+          liblzma-dev \
+          libcap-dev \
+          libsystemd-dev \
+          libavahi-client-dev \
+          freetype2-demos \
+          libegl1-mesa-dev \
+          libgles2-mesa-dev \
+          libgl1-mesa-dev \
+          libvulkan-dev \
+          vulkan-validationlayers \
+          libxcb-shape0-dev \
+          libxcb-keysyms1-dev \
+          libxcb-util0-dev \
+          libxcb-icccm4-dev \
+          libxcb-randr0-dev \
+          libxcb-xfixes0-dev \
+          libxcb-shm0-dev \
+          libxcb-sync-dev \
+          libxcb-xkb-dev \
+          libxkbcommon-dev \
+          libxkbcommon-x11-dev \
+          libwayland-dev \
+          wayland-protocols \
+          libdrm-dev \
+          libx11-xcb-dev \
+          libxrender-dev \
+          libxi-dev \
+          libxrandr-dev \
+          libxcursor-dev \
+          libxtst-dev \
+          libpulse-dev \
+          libudev-dev \
+          libusb-1.0-0-dev \
+          libdbus-1-dev \
+          libsdl2-dev \
+          libva-dev \
+          libvdpau-dev \
+          libavcodec-dev \
+          libavformat-dev \
+          libavutil-dev \
+          libswscale-dev \
+          zlib1g-dev \
+          libssl-dev \
+          libcurl4-openssl-dev \
+          libopenal-dev \
+          libjpeg-dev \
+          libpng-dev \
+          libtiff5-dev \
+          libgstreamer1.0-dev \
+          libgstreamer-plugins-base1.0-dev \
+          libgstreamer-plugins-bad1.0-dev \
+          gstreamer1.0-plugins-base \
+          gstreamer1.0-plugins-good \
+          gstreamer1.0-plugins-bad \
+          gstreamer1.0-plugins-ugly \
+          gstreamer1.0-libav
+    
+    - name: Install Python dependencies
+      run: |
+        pip3 install meson ninja
+        
+    - name: Clone Proton repository
+      run: |
+        git clone --recurse-submodules --branch ${{ github.event.inputs.proton_branch }} \
+          https://github.com/ValveSoftware/Proton.git proton
+    
+    - name: Create build directory
+      run: |
+        mkdir proton-build
+    
+    - name: Configure build environment
+      run: |
+        cd proton-build
+        ../proton/configure.sh --build-name="${{ github.event.inputs.build_name }}"
+    
+    - name: Build Proton
+      run: |
+        cd proton-build
+        make redist -j$(nproc)
+    
+    - name: Create portable archive
+      run: |
+        cd proton-build/redist
+        tar -czvf "../../${{ github.event.inputs.build_name }}.tar.gz" .
+    
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ github.event.inputs.build_name }}
+        path: ${{ github.event.inputs.build_name }}.tar.gz
+        compression-level: 0
+        retention-days: 90
+
+    - name: Cleanup build cache
+      if: always()
+      run: |
+        rm -rf proton-build
+        rm -rf proton
