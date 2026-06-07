@@ -10,16 +10,18 @@ on:
       proton_branch:
         description: 'Branch Proton yang akan dibangun'
         required: true
-        default: 'master'
+        default: 'proton-9.0'
 
 jobs:
   build-proton:
     runs-on: ubuntu-22.04
     
     steps:
+    - name: Update package list
+      run: sudo apt-get update
+    
     - name: Install dependencies
       run: |
-        sudo apt-get update
         sudo apt-get install -y \
           build-essential \
           cmake \
@@ -81,6 +83,11 @@ jobs:
           libjpeg-dev \
           libpng-dev \
           libtiff5-dev \
+          libunwind-dev
+    
+    - name: Install GStreamer dependencies
+      run: |
+        sudo apt-get install -y \
           libgstreamer1.0-dev \
           libgstreamer-plugins-base1.0-dev \
           libgstreamer-plugins-bad1.0-dev \
@@ -93,7 +100,12 @@ jobs:
     - name: Install Python dependencies
       run: |
         pip3 install meson ninja
-        
+    
+    - name: Fix broken packages (if any)
+      run: |
+        sudo apt-get --fix-broken install -y
+        sudo apt-get install -f
+    
     - name: Clone Proton repository
       run: |
         git clone --recurse-submodules --branch ${{ github.event.inputs.proton_branch }} \
@@ -101,7 +113,7 @@ jobs:
     
     - name: Create build directory
       run: |
-        mkdir proton-build
+        mkdir -p proton-build
     
     - name: Configure build environment
       run: |
@@ -125,8 +137,8 @@ jobs:
         path: ${{ github.event.inputs.build_name }}.tar.gz
         compression-level: 0
         retention-days: 90
-
-    - name: Cleanup build cache
+    
+    - name: Cleanup
       if: always()
       run: |
         rm -rf proton-build
