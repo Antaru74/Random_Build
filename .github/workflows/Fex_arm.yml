@@ -1,4 +1,4 @@
-name: Build FEX-core DEB (ARM64 Linux)
+name: Build FEX-core DEB (ARM64 Linux) - No Tools
 
 on:
   workflow_dispatch:
@@ -20,7 +20,7 @@ concurrency:
 
 env:
   UPSTREAM_REPO: FEX-Emu/FEX
-  PKG_NAME:      fex-emu
+  PKG_NAME:      fex-core
   STAGING_DIR:   /tmp/fex-package
 
 jobs:
@@ -28,13 +28,12 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
     steps:
-      - name: Install dependencies
+      - name: Install dependencies (no Qt5 needed)
         run: |
           sudo apt update
           sudo apt install -y build-essential cmake git ninja-build pkg-config \
             clang lld libasound2-dev libepoxy-dev libgl1-mesa-dev libsdl2-dev \
-            libudev-dev uuid-dev zlib1g-dev liburing-dev dpkg-dev \
-            qtbase5-dev qtdeclarative5-dev qttools5-dev
+            libudev-dev uuid-dev zlib1g-dev liburing-dev dpkg-dev
 
       - name: Checkout FEX source with submodules
         uses: actions/checkout@v4
@@ -57,7 +56,7 @@ jobs:
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "commit=${COMMIT_SHORT}" >> $GITHUB_OUTPUT
 
-      - name: Configure CMake
+      - name: Configure CMake (disable Tools to avoid Qt5)
         working-directory: src
         run: |
           mkdir -p Build && cd Build
@@ -68,6 +67,7 @@ jobs:
             -DENABLE_LTO=True \
             -DBUILD_TESTING=False \
             -DENABLE_ASSERTIONS=False \
+            -DBUILD_TOOLS=OFF \
             -G Ninja ..
 
       - name: Build with Ninja
@@ -94,7 +94,7 @@ jobs:
           Priority: optional
           Depends: libc6 (>= 2.34), zlib1g, libsdl2-2.0-0, liburing2
           Description: Fast usermode x86 and x86-64 emulator for Arm64 Linux
-           FEX allows you to run x86 and x86-64 applications on ARM64 processors.
+           FEXCore is the core emulation library for FEX.
           EOF
 
       - name: Build .deb package
@@ -114,7 +114,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.PKG_NAME }}-${{ steps.version.outputs.version }}
-          name: "FEX-Emu ${{ steps.version.outputs.version }}"
+          name: "FEXCore ${{ steps.version.outputs.version }}"
           files: ${{ env.DEB_FILE }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
