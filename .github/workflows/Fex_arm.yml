@@ -20,7 +20,7 @@ concurrency:
 
 env:
   UPSTREAM_REPO: FEX-Emu/FEX
-  PKG_NAME:      fex-emu        # Nama paket sesuai instruksi
+  PKG_NAME:      fex-emu
   STAGING_DIR:   /tmp/fex-package
 
 jobs:
@@ -61,14 +61,13 @@ jobs:
           else
             VERSION="${LAST_TAG}"
           fi
-          # Pastikan versi diawali digit (bukan persyaratan dpkg-deb, tapi baik)
           if ! [[ "$VERSION" =~ ^[0-9] ]]; then
             VERSION="0.${VERSION}"
           fi
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "commit=${COMMIT_SHORT}" >> $GITHUB_OUTPUT
 
-      - name: Configure CMake (Clang + LLD)
+      - name: Configure CMake (Clang + LLD, disable tools)
         working-directory: src
         run: |
           mkdir -p Build
@@ -80,6 +79,7 @@ jobs:
             -DENABLE_LTO=True \
             -DBUILD_TESTING=False \
             -DENABLE_ASSERTIONS=False \
+            -DBUILD_TOOLS=OFF \
             -G Ninja ..
 
       - name: Build FEXCore with Ninja
@@ -88,10 +88,8 @@ jobs:
 
       - name: Create staging directory and install
         run: |
-          # Bersihkan staging jika sudah ada
           sudo rm -rf ${{ env.STAGING_DIR }}
           mkdir -p ${{ env.STAGING_DIR }}/usr
-          # Install ke staging
           DESTDIR=${{ env.STAGING_DIR }} ninja -C src/Build install
 
       - name: Create Debian metadata (control file)
@@ -99,7 +97,7 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           mkdir -p ${{ env.STAGING_DIR }}/DEBIAN
-          cat << 'EOF' > ${{ env.STAGING_DIR }}/DEBIAN/control
+          cat > ${{ env.STAGING_DIR }}/DEBIAN/control << EOF
           Package: ${{ env.PKG_NAME }}
           Version: ${VERSION}
           Architecture: arm64
@@ -110,15 +108,12 @@ jobs:
           Description: Fast usermode x86 and x86-64 emulator for Arm64 Linux
            FEX allows you to run x86 and x86-64 applications on ARM64 processors.
           EOF
-          # Ganti placeholder VERSION dengan nilai sebenarnya
-          sed -i "s/\${VERSION}/$VERSION/g" ${{ env.STAGING_DIR }}/DEBIAN/control
 
       - name: Build .deb package using dpkg-deb
         run: |
           DEB_NAME="${{ env.PKG_NAME }}_${{ steps.version.outputs.version }}_arm64.deb"
           dpkg-deb --build ${{ env.STAGING_DIR }} "$DEB_NAME"
           echo "DEB_FILE=$DEB_NAME" >> $GITHUB_ENV
-          # Tampilkan info
           ls -la "$DEB_NAME"
           file "$DEB_NAME"
 
