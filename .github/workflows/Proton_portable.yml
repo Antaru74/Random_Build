@@ -10,7 +10,7 @@ on:
       proton_branch:
         description: 'Branch Proton yang akan dibangun'
         required: true
-        default: 'proton-9.0'
+        default: 'proton-11.0'  # Menggunakan branch resmi proton-11.0
 
 jobs:
   build-proton:
