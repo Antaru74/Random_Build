@@ -25,11 +25,11 @@ env:
 jobs:
   build:
     name: Build DEB package
-    runs-on: ubuntu-24.04-arm   # ARM64 runner
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
 
     steps:
-      - name: Checkout workflow repo (optional, for scripts)
+      - name: Checkout workflow repo (optional)
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
@@ -40,8 +40,7 @@ jobs:
           sudo apt install -y \
             git cmake ninja-build pkgconf \
             clang lld ccache nasm python3-clang \
-            libstdc++-12-dev checkinstall \
-            qt6-base-dev qt6-declarative-dev qt6-tools-dev
+            libstdc++-12-dev checkinstall
 
       - name: Checkout FEX source
         uses: actions/checkout@v4
@@ -49,7 +48,7 @@ jobs:
           repository: ${{ env.UPSTREAM_REPO }}
           ref: ${{ inputs.branch }}
           path: src
-          fetch-depth: 1
+          fetch-depth: 0   # penting agar git describe bisa baca tag
 
       - name: Sync & update submodules
         working-directory: src
@@ -61,22 +60,25 @@ jobs:
         id: version
         working-directory: src
         run: |
-          # Get short commit hash
           COMMIT_SHORT=$(git rev-parse --short HEAD)
-          # Get last tag (if any)
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "git-${COMMIT_SHORT}")
-          # Clean tag prefix v
-          LAST_TAG=${LAST_TAG#v}
-          # Append suffix if provided
-          if [[ -n "${{ inputs.version_suffix }}" ]]; then
-            VERSION="${LAST_TAG}+${{ inputs.version_suffix }}"
+          # Coba ambil tag terakhir, jika tidak ada pakai 0.0.0
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
+          LAST_TAG=${LAST_TAG#v}   # hapus 'v' di awal
+          # Tambahkan suffix jika ada
+          SUFFIX="${{ inputs.version_suffix }}"
+          if [[ -n "$SUFFIX" ]]; then
+            VERSION="${LAST_TAG}+${SUFFIX}"
           else
             VERSION="${LAST_TAG}"
+          fi
+          # Pastikan versi dimulai dengan digit (checkinstall requirement)
+          if [[ ! "$VERSION" =~ ^[0-9] ]]; then
+            VERSION="0.${VERSION}"
           fi
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "commit=${COMMIT_SHORT}" >> $GITHUB_OUTPUT
 
-      - name: Configure CMake (Clang + LLD)
+      - name: Configure CMake (Clang + LLD, disable tests & tools)
         working-directory: src
         run: |
           cmake -B Build \
@@ -99,25 +101,37 @@ jobs:
         working-directory: src
         run: |
           cd Build
+          # Ambil maintainer dengan format aman
+          MAINTAINER="$(git log -1 --format='%aN <%aE>')"
+          VERSION="${{ steps.version.outputs.version }}"
           sudo checkinstall \
-            --pkgname=${{ env.PKG_NAME }} \
-            --pkgversion="${{ steps.version.outputs.version }}" \
+            --pkgname="${{ env.PKG_NAME }}" \
+            --pkgversion="$VERSION" \
             --pkgrelease="1" \
             --pkglicense="MIT" \
             --pkggroup="misc" \
-            --maintainer="$(git log -1 --pretty=%aN <%aE>)" \
+            --maintainer="$MAINTAINER" \
             --provides="${{ env.PKG_NAME }}" \
             --requires="libc6, libstdc++6" \
             --install=no \
             --fstrans=yes \
             --nodoc \
             ninja install
+          # Cari file .deb yang dihasilkan
+          DEB_FILE=$(find . -maxdepth 1 -name "*.deb" -type f | head -n1)
+          if [[ -z "$DEB_FILE" ]]; then
+            echo "::error::No .deb file was created. Check checkinstall logs."
+            exit 1
+          fi
+          echo "DEB_FILE=${DEB_FILE}" >> $GITHUB_ENV
+          # Rename agar konsisten
+          mv "$DEB_FILE" "${{ env.PKG_NAME }}.deb"
 
       - name: Upload DEB artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.PKG_NAME }}-${{ steps.version.outputs.version }}-arm64
-          path: src/Build/*.deb
+          path: src/Build/${{ env.PKG_NAME }}.deb
           if-no-files-found: error
 
       - name: (Optional) Create GitHub Release
@@ -132,6 +146,6 @@ jobs:
             Architecture: ARM64 (aarch64)
             Compiler: Clang 18 + LLD
             LTO: enabled
-          files: src/Build/*.deb
+          files: src/Build/${{ env.PKG_NAME }}.deb
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
