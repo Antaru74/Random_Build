@@ -29,11 +29,6 @@ jobs:
     timeout-minutes: 90
 
     steps:
-      - name: Checkout workflow repo (optional)
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-
       - name: Install build dependencies
         run: |
           sudo apt update
@@ -42,43 +37,35 @@ jobs:
             clang lld ccache nasm python3-clang \
             libstdc++-12-dev checkinstall
 
-      - name: Checkout FEX source
+      - name: Checkout FEX source with submodules
         uses: actions/checkout@v4
         with:
           repository: ${{ env.UPSTREAM_REPO }}
           ref: ${{ inputs.branch }}
           path: src
-          fetch-depth: 0   # penting agar git describe bisa baca tag
-
-      - name: Sync & update submodules
-        working-directory: src
-        run: |
-          git submodule sync --recursive
-          git submodule update --init --recursive --depth 1
+          fetch-depth: 0
+          submodules: 'recursive'
 
       - name: Get version info
         id: version
         working-directory: src
         run: |
           COMMIT_SHORT=$(git rev-parse --short HEAD)
-          # Coba ambil tag terakhir, jika tidak ada pakai 0.0.0
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
-          LAST_TAG=${LAST_TAG#v}   # hapus 'v' di awal
-          # Tambahkan suffix jika ada
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.0.0")
           SUFFIX="${{ inputs.version_suffix }}"
-          if [[ -n "$SUFFIX" ]]; then
+          if [ -n "$SUFFIX" ]; then
             VERSION="${LAST_TAG}+${SUFFIX}"
           else
             VERSION="${LAST_TAG}"
           fi
-          # Pastikan versi dimulai dengan digit (checkinstall requirement)
-          if [[ ! "$VERSION" =~ ^[0-9] ]]; then
+          # checkinstall requires version starting with digit
+          if ! [[ "$VERSION" =~ ^[0-9] ]]; then
             VERSION="0.${VERSION}"
           fi
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "commit=${COMMIT_SHORT}" >> $GITHUB_OUTPUT
 
-      - name: Configure CMake (Clang + LLD, disable tests & tools)
+      - name: Configure CMake (Clang + LLD)
         working-directory: src
         run: |
           cmake -B Build \
@@ -99,32 +86,31 @@ jobs:
 
       - name: Create DEB package using checkinstall
         working-directory: src
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           cd Build
-          # Ambil maintainer dengan format aman
-          MAINTAINER="$(git log -1 --format='%aN <%aE>')"
-          VERSION="${{ steps.version.outputs.version }}"
-          sudo checkinstall \
+          # Safe maintainer (no parentheses/special chars)
+          MAINTAINER="${GITHUB_ACTOR} <${GITHUB_ACTOR}@users.noreply.github.com>"
+          sudo checkinstall --default \
             --pkgname="${{ env.PKG_NAME }}" \
-            --pkgversion="$VERSION" \
+            --pkgversion="${VERSION}" \
             --pkgrelease="1" \
             --pkglicense="MIT" \
             --pkggroup="misc" \
-            --maintainer="$MAINTAINER" \
+            --maintainer="${MAINTAINER}" \
             --provides="${{ env.PKG_NAME }}" \
             --requires="libc6, libstdc++6" \
             --install=no \
             --fstrans=yes \
             --nodoc \
             ninja install
-          # Cari file .deb yang dihasilkan
+          # Locate generated .deb file
           DEB_FILE=$(find . -maxdepth 1 -name "*.deb" -type f | head -n1)
-          if [[ -z "$DEB_FILE" ]]; then
-            echo "::error::No .deb file was created. Check checkinstall logs."
+          if [ -z "$DEB_FILE" ]; then
+            echo "::error::No .deb file was created"
             exit 1
           fi
-          echo "DEB_FILE=${DEB_FILE}" >> $GITHUB_ENV
-          # Rename agar konsisten
           mv "$DEB_FILE" "${{ env.PKG_NAME }}.deb"
 
       - name: Upload DEB artifact
@@ -133,19 +119,3 @@ jobs:
           name: ${{ env.PKG_NAME }}-${{ steps.version.outputs.version }}-arm64
           path: src/Build/${{ env.PKG_NAME }}.deb
           if-no-files-found: error
-
-      - name: (Optional) Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ env.PKG_NAME }}-${{ steps.version.outputs.version }}
-          name: "FEXCore ${{ steps.version.outputs.version }}"
-          body: |
-            Built from branch/commit: ${{ inputs.branch }}
-            Commit: ${{ steps.version.outputs.commit }}
-            Architecture: ARM64 (aarch64)
-            Compiler: Clang 18 + LLD
-            LTO: enabled
-          files: src/Build/${{ env.PKG_NAME }}.deb
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
