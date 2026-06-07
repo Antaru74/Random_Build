@@ -1,4 +1,4 @@
-name: Build FEX-core DEB (ARM64 Linux) - No Tools
+name: Build FEX-core DEB (ARM64 Linux) - checkinstall
 
 on:
   workflow_dispatch:
@@ -20,20 +20,20 @@ concurrency:
 
 env:
   UPSTREAM_REPO: FEX-Emu/FEX
-  PKG_NAME:      fex-core
-  STAGING_DIR:   /tmp/fex-package
+  PKG_NAME:      fex-emu
 
 jobs:
   build:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
     steps:
-      - name: Install dependencies (no Qt5 needed)
+      - name: Install dependencies
         run: |
           sudo apt update
           sudo apt install -y build-essential cmake git ninja-build pkg-config \
             clang lld libasound2-dev libepoxy-dev libgl1-mesa-dev libsdl2-dev \
-            libudev-dev uuid-dev zlib1g-dev liburing-dev dpkg-dev
+            libudev-dev uuid-dev zlib1g-dev liburing-dev checkinstall
+          sudo apt install -y qtbase5-dev qtchooser qt5-qmake qtbase5-dev-tools libqt5x11extras5-dev
 
       - name: Checkout FEX source with submodules
         uses: actions/checkout@v4
@@ -49,17 +49,22 @@ jobs:
         working-directory: src
         run: |
           COMMIT_SHORT=$(git rev-parse --short HEAD)
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.0.0")
+          VERSION="0.${COMMIT_SHORT}"
           SUFFIX="${{ inputs.version_suffix }}"
-          if [ -n "$SUFFIX" ]; then VERSION="${LAST_TAG}+${SUFFIX}"; else VERSION="${LAST_TAG}"; fi
-          if [[ ! "$VERSION" =~ ^[0-9] ]]; then VERSION="0.${VERSION}"; fi
+          if [ -n "$SUFFIX" ]; then VERSION="0.${COMMIT_SHORT}+${SUFFIX}"; fi
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "commit=${COMMIT_SHORT}" >> $GITHUB_OUTPUT
 
-      - name: Configure CMake (disable Tools to avoid Qt5)
+      - name: Clean Build directory
         working-directory: src
         run: |
-          mkdir -p Build && cd Build
+          rm -rf Build
+          mkdir Build
+
+      - name: Configure CMake (disable GUI component)
+        working-directory: src
+        run: |
+          cd Build
           CC=clang CXX=clang++ cmake \
             -DCMAKE_INSTALL_PREFIX=/usr \
             -DCMAKE_BUILD_TYPE=Release \
@@ -67,54 +72,49 @@ jobs:
             -DENABLE_LTO=True \
             -DBUILD_TESTING=False \
             -DENABLE_ASSERTIONS=False \
-            -DBUILD_TOOLS=OFF \
+            -DBUILD_FEXCONFIG=False \
             -G Ninja ..
 
       - name: Build with Ninja
         working-directory: src/Build
         run: ninja
 
-      - name: Install to staging directory
+      - name: Create DEB package with checkinstall
+        working-directory: src/Build
         run: |
-          sudo rm -rf ${{ env.STAGING_DIR }}
-          mkdir -p ${{ env.STAGING_DIR }}/usr
-          DESTDIR=${{ env.STAGING_DIR }} ninja -C src/Build install
+          sudo checkinstall \
+            --pkgname=${{ env.PKG_NAME }} \
+            --pkgversion="${{ steps.version.outputs.version }}" \
+            --backup=no \
+            --deldoc=yes \
+            --fstrans=no \
+            --default \
+            ninja install
 
-      - name: Create DEBIAN control file
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
+      - name: Find and rename DEB package
+        working-directory: src/Build
         run: |
-          mkdir -p ${{ env.STAGING_DIR }}/DEBIAN
-          cat > ${{ env.STAGING_DIR }}/DEBIAN/control << EOF
-          Package: ${{ env.PKG_NAME }}
-          Version: ${VERSION}
-          Architecture: arm64
-          Maintainer: GitHub Actions <actions@github.com>
-          Section: utils
-          Priority: optional
-          Depends: libc6 (>= 2.34), zlib1g, libsdl2-2.0-0, liburing2
-          Description: Fast usermode x86 and x86-64 emulator for Arm64 Linux
-           FEXCore is the core emulation library for FEX.
-          EOF
-
-      - name: Build .deb package
-        run: |
-          DEB_NAME="${{ env.PKG_NAME }}_${{ steps.version.outputs.version }}_arm64.deb"
-          dpkg-deb --build ${{ env.STAGING_DIR }} "$DEB_NAME"
-          echo "DEB_FILE=$DEB_NAME" >> $GITHUB_ENV
+          DEB_FILE=$(find . -maxdepth 1 -name "*.deb" -type f | head -n1)
+          if [ -z "$DEB_FILE" ]; then
+            echo "::error::No .deb file was created"
+            exit 1
+          fi
+          echo "Found: $DEB_FILE"
+          mv "$DEB_FILE" "${{ env.PKG_NAME }}_${{ steps.version.outputs.version }}_arm64.deb"
+          echo "DEB_FILE=${{ env.PKG_NAME }}_${{ steps.version.outputs.version }}_arm64.deb" >> $GITHUB_ENV
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.PKG_NAME }}-${{ steps.version.outputs.version }}-arm64
-          path: ${{ env.DEB_FILE }}
+          path: src/Build/${{ env.PKG_NAME }}_${{ steps.version.outputs.version }}_arm64.deb
 
       - name: Create GitHub Release (optional)
         if: github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.PKG_NAME }}-${{ steps.version.outputs.version }}
-          name: "FEXCore ${{ steps.version.outputs.version }}"
-          files: ${{ env.DEB_FILE }}
+          name: "FEX-Emu ${{ steps.version.outputs.version }}"
+          files: src/Build/${{ env.PKG_NAME }}_${{ steps.version.outputs.version }}_arm64.deb
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
