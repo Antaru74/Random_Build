@@ -36,7 +36,7 @@ jobs:
 
       - name: Create Wine prefix (32-bit)
         run: |
-          export WINEPREFIX=$(pwd)/wineprefix
+          export WINEPREFIX=$(pwd)/.wine
           export WINEARCH=win32
           # Inisialisasi prefix tanpa interaksi GUI
           wineboot -u
@@ -49,7 +49,7 @@ jobs:
 
       - name: Compress Wine prefix
         run: |
-          tar -cJvf wineprefix.tar.xz wineprefix
+          tar -cJvf wineprefix.tar.xz .wine
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
