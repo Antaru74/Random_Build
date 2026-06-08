@@ -1,0 +1,68 @@
+name: Build Wine Prefix
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Tag release untuk upload asset (kosongkan jika tidak ingin upload ke release)'
+        required: false
+        default: ''
+  # Atau bisa juga di-trigger saat release dibuat:
+  # release:
+  #   types: [created]
+
+jobs:
+  build-wine-prefix:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xz-utils
+
+      - name: Download Wine build
+        run: |
+          wget https://github.com/Kron4ek/Wine-Builds/releases/download/11.10/wine-11.10-amd64.tar.xz
+          tar -xvf wine-11.10-amd64.tar.xz
+          # Hasil ekstraksi: direktori wine-11.10-amd64/
+          echo "WINE_DIR=$(pwd)/wine-11.10-amd64" >> $GITHUB_ENV
+          echo "$(pwd)/wine-11.10-amd64/bin" >> $GITHUB_PATH
+
+      - name: Verify Wine
+        run: wine --version
+
+      - name: Create Wine prefix (32-bit)
+        run: |
+          export WINEPREFIX=$(pwd)/wineprefix
+          export WINEARCH=win32
+          # Inisialisasi prefix tanpa interaksi GUI
+          wineboot -u
+          # Tunggu hingga wineboot selesai (biasanya butuh beberapa detik)
+          sleep 10
+          # Opsional: set Windows version ke win10
+          winecfg -v win10
+        env:
+          DISPLAY: ":99.0"  # Menghindari error GUI (tidak perlu X server sebenarnya)
+
+      - name: Compress Wine prefix
+        run: |
+          tar -cJvf wineprefix.tar.xz wineprefix
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wine-prefix
+          path: wineprefix.tar.xz
+          retention-days: 7
+
+      - name: Upload to release (jika release_tag diisi)
+        if: github.event.inputs.release_tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.release_tag }}
+          files: wineprefix.tar.xz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
