@@ -25,8 +25,8 @@ jobs:
 
       - name: Download Wine build
         run: |
-          wget https://github.com/Kron4ek/Wine-Builds/releases/download/8.15/wine-8.15-amd64.tar.xz
-          tar -xvf wine-8.15-amd64.tar.xz
+          wget https://github.com/Kron4ek/Wine-Builds/releases/download/11.10/wine-11.10-amd64.tar.xz
+          tar -xvf wine-11.10-amd64.tar.xz
           # Hasil ekstraksi: direktori wine-11.10-amd64/
           echo "WINE_DIR=$(pwd)/wine-11.10-amd64" >> $GITHUB_ENV
           echo "$(pwd)/wine-11.10-amd64/bin" >> $GITHUB_PATH
@@ -34,10 +34,10 @@ jobs:
       - name: Verify Wine
         run: wine --version
 
-      - name: Create Wine prefix (32-bit)
+      - name: Create Wine prefix (64-bit)
         run: |
           export WINEPREFIX=$(pwd)/.wine
-          export WINEARCH=win32
+          export WINEARCH=win64
           # Inisialisasi prefix tanpa interaksi GUI
           wineboot -u
           # Tunggu hingga wineboot selesai (biasanya butuh beberapa detik)
