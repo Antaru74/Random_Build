@@ -1,0 +1,41 @@
+name: Download and Upload to Gofile
+
+on:
+  workflow_dispatch:
+    inputs:
+      file_url:
+        description: 'URL file yang akan didownload'
+        required: true
+        type: string
+        default: 'https://example.com/file.zip'
+      filename:
+        description: 'Nama file hasil download (opsional)'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download file from URL
+        run: |
+          if [ -z "${{ inputs.filename }}" ]; then
+            curl -L -O "${{ inputs.file_url }}"
+          else
+            curl -L -o "${{ inputs.filename }}" "${{ inputs.file_url }}"
+          fi
+          echo "FILE_NAME=$(ls -t | head -n1)" >> $GITHUB_ENV
+
+      - name: Upload ke Gofile
+        id: gofile
+        uses: ahnafnafee/action-upload-gofile@v3.0.0
+        with:
+          token: ${{ secrets.GOFILE_TOKEN }}
+          file: ${{ env.FILE_NAME }}
+
+      - name: Tampilkan link download
+        run: |
+          echo "✅ Upload berhasil!"
+          echo "🔗 Link download: ${{ steps.gofile.outputs.url }}"
+          echo "📱 QR Code: ${{ steps.gofile.outputs.qrcode }}"
