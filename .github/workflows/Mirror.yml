@@ -1,4 +1,4 @@
-name: Download and Upload to Gofile
+name: Download and Upload to Gofile (No Token)
 
 on:
   workflow_dispatch:
@@ -25,17 +25,43 @@ jobs:
           else
             curl -L -o "${{ inputs.filename }}" "${{ inputs.file_url }}"
           fi
+          # Ambil nama file yang baru saja di-download
           echo "FILE_NAME=$(ls -t | head -n1)" >> $GITHUB_ENV
 
-      - name: Upload ke Gofile
+      - name: Upload ke Gofile tanpa token
         id: gofile
-        uses: ahnafnafee/action-upload-gofile@v3.0.0
-        with:
-          token: ${{ secrets.GOFILE_TOKEN }}
-          file: ${{ env.FILE_NAME }}
+        run: |
+          # 1. Dapatkan server upload terbaik
+          SERVER_RESPONSE=$(curl -s https://api.gofile.io/servers)
+          SERVER=$(echo $SERVER_RESPONSE | jq -r '.data.servers[0].name')
+          echo "Menggunakan server: $SERVER"
+
+          # 2. Upload file (tanpa token)
+          UPLOAD_RESPONSE=$(curl -s -X POST \
+            -F "file=@${{ env.FILE_NAME }}" \
+            "https://${SERVER}.gofile.io/uploadFile")
+          
+          # 3. Cek status
+          STATUS=$(echo $UPLOAD_RESPONSE | jq -r '.status')
+          if [ "$STATUS" != "ok" ]; then
+            echo "Upload gagal: $UPLOAD_RESPONSE"
+            exit 1
+          fi
+          
+          # 4. Ambil link halaman download
+          DOWNLOAD_URL=$(echo $UPLOAD_RESPONSE | jq -r '.data.downloadPage')
+          echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
+          
+          # (Opsional) Ambil direct link jika ada
+          DIRECT_LINK=$(echo $UPLOAD_RESPONSE | jq -r '.data.directLink // empty')
+          if [ -n "$DIRECT_LINK" ]; then
+            echo "DIRECT_LINK=$DIRECT_LINK" >> $GITHUB_ENV
+          fi
 
       - name: Tampilkan link download
         run: |
-          echo "✅ Upload berhasil!"
-          echo "🔗 Link download: ${{ steps.gofile.outputs.url }}"
-          echo "📱 QR Code: ${{ steps.gofile.outputs.qrcode }}"
+          echo "✅ Upload berhasil (tanpa token)!"
+          echo "🔗 Halaman download: ${{ env.DOWNLOAD_URL }}"
+          if [ -n "${{ env.DIRECT_LINK }}" ]; then
+            echo "⚡ Direct link: ${{ env.DIRECT_LINK }}"
+          fi
