@@ -1,0 +1,110 @@
+name: Build RPCS3 ARM64 Linux
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build-arm64:
+    runs-on: ubuntu-24.04-arm
+    strategy:
+      matrix:
+        compiler: [clang, gcc]
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/ccache
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: 'false'
+        fetch-depth: 0
+
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          cmake ninja-build \
+          libasound2-dev libpulse-dev libaudio-dev \
+          libx11-dev libxrandr-dev libxi-dev libgl1-mesa-dev \
+          libglu1-mesa-dev libevdev-dev libudev-dev libssl-dev \
+          qt6-base-dev qt6-base-private-dev qt6-tools-dev \
+          libavcodec-dev libavformat-dev libavutil-dev libswresample-dev \
+          libcurl4-openssl-dev libpugixml-dev libedit-dev \
+          libwayland-dev wayland-protocols extra-cmake-modules
+
+    - name: Setup Vulkan SDK
+      run: |
+        wget -qO - https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo apt-key add -
+        sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
+        sudo apt-get update
+        sudo apt-get install -y vulkan-sdk
+
+    - name: Restore ccache
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ccache-${{ runner.os }}-${{ matrix.compiler }}-${{ github.sha }}
+        restore-keys: |
+          ccache-${{ runner.os }}-${{ matrix.compiler }}-
+
+    - name: Setup compiler for ARM64
+      run: |
+        if [ "${{ matrix.compiler }}" = "clang" ]; then
+          sudo apt-get install -y clang-17 lld-17
+          echo "CC=clang-17" >> $GITHUB_ENV
+          echo "CXX=clang++-17" >> $GITHUB_ENV
+          echo "LINKER_FLAG=-fuse-ld=lld-17" >> $GITHUB_ENV
+        else
+          sudo apt-get install -y gcc-13 g++-13
+          echo "CC=gcc-13" >> $GITHUB_ENV
+          echo "CXX=g++-13" >> $GITHUB_ENV
+          echo "LINKER_FLAG=-fuse-ld=gold" >> $GITHUB_ENV
+        fi
+
+    - name: Configure RPCS3 with CMake
+      run: |
+        mkdir -p build
+        cd build
+        cmake .. \
+          -DCMAKE_C_COMPILER=${{ env.CC }} \
+          -DCMAKE_CXX_COMPILER=${{ env.CXX }} \
+          -DCMAKE_EXE_LINKER_FLAGS="${{ env.LINKER_FLAG }}" \
+          -DCMAKE_MODULE_LINKER_FLAGS="${{ env.LINKER_FLAG }}" \
+          -DCMAKE_SHARED_LINKER_FLAGS="${{ env.LINKER_FLAG }}" \
+          -DUSE_NATIVE_INSTRUCTIONS=OFF \
+          -DUSE_PRECOMPILED_HEADERS=OFF \
+          -DUSE_SYSTEM_CURL=ON \
+          -DUSE_SDL=ON \
+          -DUSE_SYSTEM_SDL=ON \
+          -DUSE_SYSTEM_FFMPEG=ON \
+          -DUSE_SYSTEM_OPENCV=ON \
+          -DUSE_DISCORD_RPC=ON \
+          -DOpenGL_GL_PREFERENCE=LEGACY \
+          -DBUILD_RPCS3_TESTS=OFF \
+          -DRUN_RPCS3_TESTS=OFF \
+          -G Ninja
+
+    - name: Build RPCS3
+      run: |
+        cd build
+        ninja
+        # Untuk informasi lebih lanjut: https://github.com/RPCS3/rpcs3/blob/master/BUILDING.md
+
+    - name: Save ccache
+      uses: actions/cache/save@v4
+      if: always()
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ccache-${{ runner.os }}-${{ matrix.compiler }}-${{ github.sha }}
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: rpcs3-linux-arm64-${{ matrix.compiler }}
+        path: |
+          build/bin/rpcs3
+          build/bin/*.so*
