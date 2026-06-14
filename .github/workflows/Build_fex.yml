@@ -24,6 +24,8 @@ jobs:
           #!/bin/bash
           set -e
 
+          # Simpan direktori workspace GitHub Actions yang asli
+          WORKSPACE_DIR="$PWD"
           export DEBIAN_FRONTEND=noninteractive
 
           echo "Menambahkan repository trixie-backports..."
@@ -126,9 +128,10 @@ jobs:
 
           echo "Membuat arsip portable..."
           cd /root
-          tar -czvf /github/workspace/fex-emu-portable-arm64.tar.gz FEX-Portable/
+          # Menggunakan WORKSPACE_DIR untuk memastikan path-nya tepat
+          tar -czvf "$WORKSPACE_DIR/fex-emu-portable-arm64.tar.gz" FEX-Portable/
 
-          echo "Selesai! FEX Emu portable siap di /github/workspace/fex-emu-portable-arm64.tar.gz"
+          echo "Selesai! FEX Emu portable siap di $WORKSPACE_DIR/fex-emu-portable-arm64.tar.gz"
           EOF
 
           chmod +x build.sh
