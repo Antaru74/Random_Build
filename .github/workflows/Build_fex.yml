@@ -1,4 +1,4 @@
-name: Build FEX Emu Portable
+name: Build FEX Emu Portable (ARM64)
 
 on:
   workflow_dispatch:   # Memungkinkan trigger manual
@@ -7,9 +7,9 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm   # Menggunakan runner ARM64 native GitHub
     container:
-      image: debian:trixie-slim   # Menggunakan Debian Trixie (testing)
+      image: debian:trixie-slim   # Docker otomatis menarik image arm64 (aarch64)
     steps:
       - name: Install dasar dan siapkan environment
         run: |
@@ -33,19 +33,13 @@ jobs:
           apt-get update
           apt-get install -t trixie-backports -y libcurl4-openssl-dev
 
-          echo "Menginstall semua build dependencies..."
+          echo "Menginstall semua build dependencies (Native ARM64)..."
           apt-get install -y \
               build-essential \
               ccache \
               clang \
               cmake \
               curl \
-              g++-13-i686-linux-gnu \
-              g++-13-x86-64-linux-gnu \
-              gcc-13-i686-linux-gnu \
-              gcc-13-multilib-i686-linux-gnu \
-              gcc-13-multilib-x86-64-linux-gnu \
-              gcc-13-x86-64-linux-gnu \
               git \
               libasound2-dev \
               libcapstone-dev \
@@ -54,11 +48,8 @@ jobs:
               libcurl4-openssl-dev \
               libdrm-dev \
               libedit-dev \
-              libgcc-13-dev-amd64-cross \
-              libgcc-13-dev-i386-cross \
               libgl1-mesa-dev \
               libssl-dev \
-              libstdc++-13-dev-i386-cross \
               libudev-dev \
               libvulkan-dev \
               libwayland-dev \
@@ -115,6 +106,7 @@ jobs:
           cd build
 
           echo "Mengkonfigurasi build dengan CMake..."
+          # BUILD_THUNKS di-set ke False karena thunks membutuhkan compiler x86/x64
           cmake .. -G Ninja \
               -DCMAKE_BUILD_TYPE=Release \
               -DCMAKE_C_COMPILER=clang \
@@ -123,7 +115,7 @@ jobs:
               -DENABLE_LTO=True \
               -DBUILD_TESTING=False \
               -DENABLE_ASSERTIONS=False \
-              -DBUILD_THUNKS=True
+              -DBUILD_THUNKS=False
 
           echo "Memulai proses build dengan Ninja..."
           ninja -j"$(nproc)"
@@ -134,9 +126,9 @@ jobs:
 
           echo "Membuat arsip portable..."
           cd /root
-          tar -czvf /github/workspace/fex-emu-portable.tar.gz FEX-Portable/
+          tar -czvf /github/workspace/fex-emu-portable-arm64.tar.gz FEX-Portable/
 
-          echo "Selesai! FEX Emu portable siap di /github/workspace/fex-emu-portable.tar.gz"
+          echo "Selesai! FEX Emu portable siap di /github/workspace/fex-emu-portable-arm64.tar.gz"
           EOF
 
           chmod +x build.sh
@@ -145,6 +137,6 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: fex-emu-portable
-          path: fex-emu-portable.tar.gz
+          name: fex-emu-portable-arm64
+          path: fex-emu-portable-arm64.tar.gz
           if-no-files-found: error
