@@ -1,4 +1,4 @@
-name: Build FEX-Emu for Debian Arm64
+name: Build FEX-Emu DEB for ARM64
 
 on:
   workflow_dispatch:
@@ -20,21 +20,20 @@ jobs:
 
               apt update
               apt install -y curl git cmake ninja-build build-essential clang lld \
-                libasound2-dev libcapstone-dev libclang-19-dev libclang-21-dev \
+                libasound2-dev libcapstone-dev \
                 libcurl4-openssl-dev libdrm-dev libedit-dev libgl1-mesa-dev \
                 libssl-dev libudev-dev libvulkan-dev libwayland-dev \
                 libx11-dev libxcb1-dev libxcb-icccm4-dev libxcb-image0-dev \
                 libxcb-keysyms1-dev libxcb-randr0-dev libxcb-render-util0-dev \
                 libxcb-shape0-dev libxcb-shm0-dev libxcb-sync-dev \
                 libxcb-xfixes0-dev libxcb-xinerama0-dev libxext-dev \
-                libxrandr-dev libxxf86vm-dev libzstd-dev llvm-19-dev nasm \
-                pkgconf python3 python3-pip python3-setuptools python3-venv \
-                qml6-module-qtqml-workerscript qml6-module-qtquick-controls \
-                qml6-module-qtquick-dialogs qml6-module-qtquick-layouts \
-                qml6-module-qtquick-templates qml6-module-qtquick-window \
+                libxrandr-dev libxxf86vm-dev libzstd-dev \
+                llvm-19-dev nasm pkgconf python3 python3-pip \
                 qt6-base-dev qt6-declarative-dev squashfs-tools squashfuse \
                 wayland-protocols
 
+              # Hapus qml6-module jika gagal, tidak diperlukan untuk build
+              # Clone dan build
               git clone --recurse-submodules https://github.com/FEX-Emu/FEX.git /FEX
               cd /FEX
               mkdir build && cd build
