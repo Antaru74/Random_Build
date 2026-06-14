@@ -10,17 +10,17 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
-      - name: Build FEX
+      - name: Build FEX inside Debian Sid
         run: |
           docker run --rm --platform linux/arm64 \
             -v ${{ github.workspace }}/output:/output \
-            debian:trixie-slim \
+            debian:sid-slim \
             bash -c "
               set -ex
 
               apt update
               apt install -y curl git cmake ninja-build build-essential clang lld \
-                libasound2-dev libcapstone-dev \
+                libasound2-dev libcapstone-dev libclang-19-dev libclang-21-dev \
                 libcurl4-openssl-dev libdrm-dev libedit-dev libgl1-mesa-dev \
                 libssl-dev libudev-dev libvulkan-dev libwayland-dev \
                 libx11-dev libxcb1-dev libxcb-icccm4-dev libxcb-image0-dev \
@@ -28,12 +28,13 @@ jobs:
                 libxcb-shape0-dev libxcb-shm0-dev libxcb-sync-dev \
                 libxcb-xfixes0-dev libxcb-xinerama0-dev libxext-dev \
                 libxrandr-dev libxxf86vm-dev libzstd-dev \
-                llvm-19-dev nasm pkgconf python3 python3-pip \
+                llvm-19-dev nasm pkgconf python3 python3-pip python3-setuptools python3-venv \
+                qml6-module-qtqml-workerscript qml6-module-qtquick-controls \
+                qml6-module-qtquick-dialogs qml6-module-qtquick-layouts \
+                qml6-module-qtquick-templates qml6-module-qtquick-window \
                 qt6-base-dev qt6-declarative-dev squashfs-tools squashfuse \
                 wayland-protocols
 
-              # Hapus qml6-module jika gagal, tidak diperlukan untuk build
-              # Clone dan build
               git clone --recurse-submodules https://github.com/FEX-Emu/FEX.git /FEX
               cd /FEX
               mkdir build && cd build
@@ -54,7 +55,7 @@ jobs:
               cp *.deb /output/
             "
 
-      - name: Upload DEB
+      - name: Upload DEB artifact
         uses: actions/upload-artifact@v4
         with:
           name: fex-emu-deb
