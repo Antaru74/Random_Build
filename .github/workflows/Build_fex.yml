@@ -1,0 +1,82 @@
+name: Build FEX-Emu DEB for ARM64
+
+on:
+  workflow_dispatch:  # Jalankan manual dari tab Actions
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up QEMU for ARM64 emulation
+        uses: docker/setup-qemu-action@v3
+
+      - name: Build inside Debian Trixie ARM64 container
+        run: |
+          docker run --rm --platform linux/arm64 \
+            -v ${{ github.workspace }}/output:/output \
+            debian:trixie-slim \
+            bash -c "
+              set -ex
+
+              # Sumber backports (opsional, fallback jika gagal)
+              echo 'deb http://deb.debian.org/debian trixie-backports main' >> /etc/apt/sources.list
+              apt update
+
+              # Install libcurl4-openssl-dev dari backports atau repo biasa
+              apt install -y libcurl4-openssl-dev -t trixie-backports || apt install -y libcurl4-openssl-dev
+
+              # Install semua build dependencies
+              apt install -y \
+                build-essential ccache clang cmake curl \
+                g++-13-i686-linux-gnu g++-13-x86-64-linux-gnu \
+                gcc-13-i686-linux-gnu gcc-13-multilib-i686-linux-gnu \
+                gcc-13-multilib-x86-64-linux-gnu gcc-13-x86-64-linux-gnu \
+                git libasound2-dev libcapstone-dev libclang-19-dev libclang-21-dev \
+                libcurl4-openssl-dev libdrm-dev libedit-dev \
+                libgcc-13-dev-amd64-cross libgcc-13-dev-i386-cross \
+                libgl1-mesa-dev libssl-dev libstdc++-13-dev-i386-cross \
+                libudev-dev libvulkan-dev libwayland-dev libx11-dev \
+                libxcb-icccm4-dev libxcb-image0-dev libxcb-keysyms1-dev \
+                libxcb-randr0-dev libxcb-render-util0-dev libxcb-shape0-dev \
+                libxcb-shm0-dev libxcb-sync-dev libxcb-xfixes0-dev \
+                libxcb-xinerama0-dev libxcb1-dev libxext-dev libxrandr-dev \
+                libxxf86vm-dev libzstd-dev lld llvm llvm-19-dev nasm ninja-build \
+                pkgconf python3 python3-pip python3-setuptools python3-venv \
+                qml6-module-qtqml-workerscript qml6-module-qtquick-controls \
+                qml6-module-qtquick-dialogs qml6-module-qtquick-layouts \
+                qml6-module-qtquick-templates qml6-module-qtquick-window \
+                qt6-base-dev qt6-declarative-dev squashfs-tools squashfuse \
+                wayland-protocols
+
+              # Clone FEX dengan submodule
+              git clone --recurse-submodules https://github.com/FEX-Emu/FEX.git /FEX
+              cd /FEX
+              mkdir build && cd build
+
+              # Konfigurasi build (Release, LTO, Thunks)
+              cmake .. -G Ninja \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_C_COMPILER=clang \
+                -DCMAKE_CXX_COMPILER=clang++ \
+                -DUSE_LINKER=lld \
+                -DENABLE_LTO=True \
+                -DBUILD_TESTING=False \
+                -DENABLE_ASSERTIONS=False \
+                -DBUILD_THUNKS=True \
+                -DCMAKE_INSTALL_PREFIX=/usr
+
+              # Build dengan semua core
+              ninja -j\$(nproc)
+
+              # Buat paket .deb
+              cpack -G DEB -C Release
+
+              # Salin .deb ke volume yang di-bind
+              cp *.deb /output/
+            "
+
+      - name: Upload DEB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fex-emu-deb
+          path: output/*.deb
