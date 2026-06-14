@@ -1,59 +1,150 @@
-name: Build FEX-Emu DEB for ARM64 (Native ARM Runner)
+name: Build FEX Emu Portable
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:   # Memungkinkan trigger manual
+  push:
+    branches: [ main ]
 
 jobs:
   build:
-    runs-on: ubuntu-24.04-arm # atau ubuntu-22.04-arm64
+    runs-on: ubuntu-latest
+    container:
+      image: debian:trixie-slim   # Menggunakan Debian Trixie (testing)
     steps:
-      - name: Build inside Debian Sid container
+      - name: Install dasar dan siapkan environment
         run: |
-          docker run --rm \
-            -v ${{ github.workspace }}/output:/output \
-            debian:sid-slim \
-            bash -c "
-              set -ex
+          apt-get update
+          apt-get install -y --no-install-recommends sudo git curl ca-certificates
+          # Pastikan tidak ada interaksi pengguna saat install
+          export DEBIAN_FRONTEND=noninteractive
 
-              apt update
-              apt install -y curl git cmake ninja-build build-essential clang lld \
-                libasound2-dev libcapstone-dev libclang-19-dev libclang-21-dev \
-                libcurl4-openssl-dev libdrm-dev libedit-dev libgl1-mesa-dev \
-                libssl-dev libudev-dev libvulkan-dev libwayland-dev \
-                libx11-dev libxcb1-dev libxcb-icccm4-dev libxcb-image0-dev \
-                libxcb-keysyms1-dev libxcb-randr0-dev libxcb-render-util0-dev \
-                libxcb-shape0-dev libxcb-shm0-dev libxcb-sync-dev \
-                libxcb-xfixes0-dev libxcb-xinerama0-dev libxext-dev \
-                libxrandr-dev libxxf86vm-dev libzstd-dev \
-                llvm-19-dev nasm pkgconf python3 python3-pip python3-setuptools python3-venv \
-                qml6-module-qtqml-workerscript qml6-module-qtquick-controls \
-                qml6-module-qtquick-dialogs qml6-module-qtquick-layouts \
-                qml6-module-qtquick-templates qml6-module-qtquick-window \
-                qt6-base-dev qt6-declarative-dev squashfs-tools squashfuse \
-                wayland-protocols
+      - name: Jalankan script build
+        run: |
+          cat > build.sh << 'EOF'
+          #!/bin/bash
+          set -e
 
-              git clone --recurse-submodules https://github.com/FEX-Emu/FEX.git /FEX
-              cd /FEX
-              mkdir build && cd build
+          export DEBIAN_FRONTEND=noninteractive
 
-              cmake .. -G Ninja \
-                -DCMAKE_BUILD_TYPE=Release \
-                -DCMAKE_C_COMPILER=clang \
-                -DCMAKE_CXX_COMPILER=clang++ \
-                -DUSE_LINKER=lld \
-                -DENABLE_LTO=True \
-                -DBUILD_TESTING=False \
-                -DENABLE_ASSERTIONS=False \
-                -DBUILD_THUNKS=True \
-                -DCMAKE_INSTALL_PREFIX=/usr
+          echo "Menambahkan repository trixie-backports..."
+          echo "deb http://deb.debian.org/debian trixie-backports main contrib non-free non-free-firmware" | tee -a /etc/apt/sources.list
 
-              ninja -j\$(nproc)
-              cpack -G DEB -C Release
-              cp *.deb /output/
-            "
+          echo "Memperbarui daftar paket dan menginstall libcurl4-openssl-dev dari backports..."
+          apt-get update
+          apt-get install -t trixie-backports -y libcurl4-openssl-dev
 
-      - name: Upload DEB artifact
+          echo "Menginstall semua build dependencies..."
+          apt-get install -y \
+              build-essential \
+              ccache \
+              clang \
+              cmake \
+              curl \
+              g++-13-i686-linux-gnu \
+              g++-13-x86-64-linux-gnu \
+              gcc-13-i686-linux-gnu \
+              gcc-13-multilib-i686-linux-gnu \
+              gcc-13-multilib-x86-64-linux-gnu \
+              gcc-13-x86-64-linux-gnu \
+              git \
+              libasound2-dev \
+              libcapstone-dev \
+              libclang-19-dev \
+              libclang-21-dev \
+              libcurl4-openssl-dev \
+              libdrm-dev \
+              libedit-dev \
+              libgcc-13-dev-amd64-cross \
+              libgcc-13-dev-i386-cross \
+              libgl1-mesa-dev \
+              libssl-dev \
+              libstdc++-13-dev-i386-cross \
+              libudev-dev \
+              libvulkan-dev \
+              libwayland-dev \
+              libx11-dev \
+              libxcb-icccm4-dev \
+              libxcb-image0-dev \
+              libxcb-keysyms1-dev \
+              libxcb-randr0-dev \
+              libxcb-render-util0-dev \
+              libxcb-shape0-dev \
+              libxcb-shm0-dev \
+              libxcb-sync-dev \
+              libxcb-xfixes0-dev \
+              libxcb-xinerama0-dev \
+              libxcb1-dev \
+              libxext-dev \
+              libxrandr-dev \
+              libxxf86vm-dev \
+              libzstd-dev \
+              lld \
+              llvm \
+              llvm-19-dev \
+              nasm \
+              ninja-build \
+              pkgconf \
+              python3 \
+              python3-pip \
+              python3-setuptools \
+              python3-venv \
+              qml6-module-qtqml-workerscript \
+              qml6-module-qtquick-controls \
+              qml6-module-qtquick-dialogs \
+              qml6-module-qtquick-layouts \
+              qml6-module-qtquick-templates \
+              qml6-module-qtquick-window \
+              qt6-base-dev \
+              qt6-declarative-dev \
+              squashfs-tools \
+              squashfuse \
+              wayland-protocols
+
+          echo "Meng-clone repository FEX..."
+          if [ -d "FEX" ]; then
+              echo "Direktori FEX sudah ada, melanjutkan ke dalamnya..."
+              cd FEX
+              git pull --recurse-submodules
+          else
+              git clone --recurse-submodules https://github.com/FEX-Emu/FEX.git
+              cd FEX
+          fi
+
+          echo "Membuat direktori build..."
+          mkdir -p build
+          cd build
+
+          echo "Mengkonfigurasi build dengan CMake..."
+          cmake .. -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_C_COMPILER=clang \
+              -DCMAKE_CXX_COMPILER=clang++ \
+              -DUSE_LINKER=lld \
+              -DENABLE_LTO=True \
+              -DBUILD_TESTING=False \
+              -DENABLE_ASSERTIONS=False \
+              -DBUILD_THUNKS=True
+
+          echo "Memulai proses build dengan Ninja..."
+          ninja -j"$(nproc)"
+
+          echo "Menginstall FEX ke staging directory..."
+          mkdir -p /root/FEX-Portable
+          DESTDIR=/root/FEX-Portable ninja install
+
+          echo "Membuat arsip portable..."
+          cd /root
+          tar -czvf /github/workspace/fex-emu-portable.tar.gz FEX-Portable/
+
+          echo "Selesai! FEX Emu portable siap di /github/workspace/fex-emu-portable.tar.gz"
+          EOF
+
+          chmod +x build.sh
+          ./build.sh
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: fex-emu-deb
-          path: output/*.deb
+          name: fex-emu-portable
+          path: fex-emu-portable.tar.gz
+          if-no-files-found: error
