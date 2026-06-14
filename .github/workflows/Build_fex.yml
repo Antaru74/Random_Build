@@ -1,18 +1,15 @@
-name: Build FEX-Emu DEB for ARM64
+name: Build FEX-Emu DEB for ARM64 (Native ARM Runner)
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm64   # atau ubuntu-22.04-arm64
     steps:
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Build FEX inside Debian Sid
+      - name: Build inside Debian Sid container
         run: |
-          docker run --rm --platform linux/arm64 \
+          docker run --rm \
             -v ${{ github.workspace }}/output:/output \
             debian:sid-slim \
             bash -c "
