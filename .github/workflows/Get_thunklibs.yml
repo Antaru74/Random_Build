@@ -1,11 +1,11 @@
-name: Get FEX ThunkLibs (Manual)
+name: Get FEX ThunkLibs (Generate)
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-24.arm64  # Pastikan menggunakan runner ARM64
 
     steps:
       - name: Install dependencies
@@ -22,10 +22,14 @@ jobs:
           echo "/usr/local/lib" | sudo tee /etc/ld.so.conf.d/fex.conf
           sudo ldconfig
 
-      - name: Verify FEX Installation
+      - name: Debug - List FEX binaries
         run: |
-          FEXLoader --version || true
-          ls -la /usr/local/bin/FEX* || true
+          echo "=== Binaries in /usr/local/bin ==="
+          ls -la /usr/local/bin/FEX* 2>/dev/null || echo "Tidak ada"
+          echo "=== Contents of /tmp/fex-pkg/usr/bin ==="
+          ls -la /tmp/fex-pkg/usr/bin/ 2>/dev/null || echo "Tidak ada"
+          echo "=== Contents of /usr/local/lib/fex-emu ==="
+          ls -la /usr/local/lib/fex-emu/ 2>/dev/null || echo "Tidak ada"
 
       - name: Download RootFS (SquashFS)
         run: |
@@ -33,41 +37,32 @@ jobs:
           wget -O $HOME/.fex-emu/RootFS/Ubuntu_24_04.sqsh \
             https://rootfs.fex-emu.gg/Ubuntu_24_04/2025-12-27/Ubuntu_24_04.sqsh
 
-      - name: Configure FEX RootFS in Config.json
-        run: |
-          mkdir -p $HOME/.fex-emu/
-          cat > $HOME/.fex-emu/Config.json <<EOF
-          {
-            "Config": {
-              "RootFS": "$HOME/.fex-emu/RootFS/Ubuntu_24_04.sqsh"
-            }
-          }
-          EOF
-          cat $HOME/.fex-emu/Config.json
-
-      - name: Collect ThunkLibs
-        id: collect_thunks
+      - name: Generate ThunkLibs using FEXThunkLibsGenerator
+        id: generate_thunks
         run: |
           THUNK_OUTPUT_DIR="$HOME/fex-thunklibs"
           mkdir -p "$THUNK_OUTPUT_DIR"
 
-          # 1. Host-side ThunkLibs (dari instalasi FEX)
-          if [ -d "/usr/local/lib/fex-emu/HostThunks" ]; then
-            echo "Menyalin HostThunks..."
-            cp -rv /usr/local/lib/fex-emu/HostThunks/* "$THUNK_OUTPUT_DIR/" 2>/dev/null || true
-          fi
-
-          # 2. Guest-side ThunkLibs (dari instalasi FEX)
-          if [ -d "/usr/local/share/fex-emu/GuestThunks" ]; then
-            echo "Menyalin GuestThunks..."
-            cp -rv /usr/local/share/fex-emu/GuestThunks/* "$THUNK_OUTPUT_DIR/" 2>/dev/null || true
-          fi
-
-          # 3. Mount SquashFS dan cari file thunk di dalamnya
+          # Mount rootfs squashfs
           mkdir -p /tmp/rootfs-mount
           sudo mount -t squashfs -o ro "$HOME/.fex-emu/RootFS/Ubuntu_24_04.sqsh" /tmp/rootfs-mount
-          echo "Mencari file thunk di dalam rootfs..."
-          find /tmp/rootfs-mount -type f \( -name "*thunk*.so*" -o -name "*thunk*.a" -o -path "*/ThunkLibs/*" \) -exec cp -v {} "$THUNK_OUTPUT_DIR/" \; 2>/dev/null || true
+
+          # Cek apakah FEXThunkLibsGenerator ada
+          if command -v FEXThunkLibsGenerator &> /dev/null; then
+            echo "Menjalankan FEXThunkLibsGenerator..."
+            FEXThunkLibsGenerator --rootfs /tmp/rootfs-mount --output "$THUNK_OUTPUT_DIR"
+          elif [ -f "/usr/local/bin/FEXThunkLibsGenerator" ]; then
+            echo "Menjalankan FEXThunkLibsGenerator dari /usr/local/bin..."
+            /usr/local/bin/FEXThunkLibsGenerator --rootfs /tmp/rootfs-mount --output "$THUNK_OUTPUT_DIR"
+          else
+            echo "FEXThunkLibsGenerator tidak ditemukan, mencoba metode manual..."
+            # Manual find
+            find /tmp/rootfs-mount -type f \( -name "*thunk*.so*" -o -name "*thunk*.a" \) -exec cp -v {} "$THUNK_OUTPUT_DIR/" \;
+            # Cari juga di host
+            find /usr/local -type f -name "*thunk*" -exec cp -v {} "$THUNK_OUTPUT_DIR/" \;
+            find /tmp/fex-pkg -type f -name "*thunk*" -exec cp -v {} "$THUNK_OUTPUT_DIR/" \;
+          fi
+
           sudo umount /tmp/rootfs-mount
 
           echo "=== ThunkLibs terkumpul ==="
@@ -79,6 +74,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: fex-thunklibs
-          path: ${{ steps.collect_thunks.outputs.thunk_path }}
+          path: ${{ steps.generate_thunks.outputs.thunk_path }}
           if-no-files-found: warn
           retention-days: 7
