@@ -32,30 +32,39 @@ jobs:
           FEXThunkLibsGenerator --help || true
 
       - name: Run FEXRootFSFetcher (Ubuntu 24.04, option 5)
-        id: fetch_rootfs
-        run: |
-          # Use expect to handle interactive prompts
-          expect <<EOF
-          set timeout 300
-          spawn FEXRootFSFetcher
-          expect "Select an option:" { send "5\r" }
-          expect "Press enter to continue" { send "\r" }
-          expect eof
-          EOF
-          # Verify rootfs directory exists
-          sleep 5
-          ROOTFS_DIR="$HOME/.fex-emu/RootFS/ubuntu-24.04"
-          if [ -d "$ROOTFS_DIR" ]; then
-            echo "rootfs_dir=$ROOTFS_DIR" >> $GITHUB_OUTPUT
-          else
-            echo "RootFS not found at $ROOTFS_DIR, searching..."
-            FOUND_DIR=$(find $HOME/.fex-emu -type d -name "ubuntu-24.04" | head -1)
-            if [ -n "$FOUND_DIR" ]; then
-              echo "rootfs_dir=$FOUND_DIR" >> $GITHUB_OUTPUT
+          id: fetch_rootfs
+          run: |
+            # Gunakan expect untuk otomatisasi interaksi penuh
+            expect <<'EOF'
+            set timeout 1800  # timeout 30 menit karena download rootfs
+            spawn FEXRootFSFetcher
+        
+            # 1. Tawaran download rootfs
+            expect {
+              -re "RootFS not found.*Do you want to try and download one.*" { send "y\r"; exp_continue }
+              -re "Select an option:" { send "5\r"; exp_continue }
+              -re "Press enter to continue" { send "\r"; exp_continue }
+              -re "Do you want to.*y.*1" { send "y\r"; exp_continue }
+              -re "Enter your choice.*1" { send "1\r"; exp_continue }
+              timeout { puts "Timeout waiting for prompt"; exit 1 }
+              eof
+            }
+            EOF
+        
+            # Verifikasi rootfs
+            sleep 5
+            ROOTFS_DIR="$HOME/.fex-emu/RootFS/ubuntu-24.04"
+            if [ -d "$ROOTFS_DIR" ]; then
+              echo "rootfs_dir=$ROOTFS_DIR" >> $GITHUB_OUTPUT
             else
-              echo "ERROR: Could not locate rootfs" && exit 1
+              echo "Mencari direktori rootfs..."
+              FOUND_DIR=$(find $HOME/.fex-emu -type d -name "ubuntu-24.04" | head -1)
+              if [ -n "$FOUND_DIR" ]; then
+                echo "rootfs_dir=$FOUND_DIR" >> $GITHUB_OUTPUT
+              else
+                echo "ERROR: RootFS tidak ditemukan" && exit 1
+              fi
             fi
-          fi
 
       - name: Generate or collect ThunkLibs
         run: |
