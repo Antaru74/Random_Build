@@ -32,8 +32,8 @@ jobs:
           FEXThunkLibsGenerator --help || true
 
       - name: Run FEXRootFSFetcher (Ubuntu 24.04, option 5)
-          id: fetch_rootfs
-          run: |
+        id: fetch_rootfs
+        run: |
             # Gunakan expect untuk otomatisasi interaksi penuh
             expect <<'EOF'
             set timeout 1800  # timeout 30 menit karena download rootfs
