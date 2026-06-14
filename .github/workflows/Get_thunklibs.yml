@@ -1,0 +1,92 @@
+name: Get FEX ThunkLibs
+
+on:
+  workflow_dispatch:  # Manual trigger
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm  # ARM64 runner required (GitHub hosted ARM runner)
+
+    steps:
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y wget zstd tar expect
+
+      - name: Download FEX-emu package (Arch Linux ARM64)
+        run: |
+          wget https://repo.archlinuxcn.org/aarch64/fex-emu-2605-1-aarch64.pkg.tar.zst
+
+      - name: Extract package to /usr/local
+        run: |
+          mkdir -p /tmp/fex-pkg
+          tar --zstd -xf fex-emu-2605-1-aarch64.pkg.tar.zst -C /tmp/fex-pkg
+          sudo cp -r /tmp/fex-pkg/usr/* /usr/local/
+          sudo ldconfig  # Update library cache if needed
+          echo "/usr/local/lib" | sudo tee /etc/ld.so.conf.d/fex.conf
+          sudo ldconfig
+
+      - name: Verify FEX tools
+        run: |
+          FEXRootFSFetcher --help || true
+          FEXThunkLibsGenerator --help || true
+
+      - name: Run FEXRootFSFetcher (Ubuntu 24.04, option 5)
+        id: fetch_rootfs
+        run: |
+          # Use expect to handle interactive prompts
+          expect <<EOF
+          set timeout 300
+          spawn FEXRootFSFetcher
+          expect "Select an option:" { send "5\r" }
+          expect "Press enter to continue" { send "\r" }
+          expect eof
+          EOF
+          # Verify rootfs directory exists
+          sleep 5
+          ROOTFS_DIR="$HOME/.fex-emu/RootFS/ubuntu-24.04"
+          if [ -d "$ROOTFS_DIR" ]; then
+            echo "rootfs_dir=$ROOTFS_DIR" >> $GITHUB_OUTPUT
+          else
+            echo "RootFS not found at $ROOTFS_DIR, searching..."
+            FOUND_DIR=$(find $HOME/.fex-emu -type d -name "ubuntu-24.04" | head -1)
+            if [ -n "$FOUND_DIR" ]; then
+              echo "rootfs_dir=$FOUND_DIR" >> $GITHUB_OUTPUT
+            else
+              echo "ERROR: Could not locate rootfs" && exit 1
+            fi
+          fi
+
+      - name: Generate or collect ThunkLibs
+        run: |
+          THUNK_OUTPUT_DIR="$HOME/fex-thunklibs"
+          mkdir -p "$THUNK_OUTPUT_DIR"
+
+          # Method 1: Use FEXThunkLibsGenerator if available
+          if command -v FEXThunkLibsGenerator &> /dev/null; then
+            echo "Generating ThunkLibs using FEXThunkLibsGenerator..."
+            FEXThunkLibsGenerator --rootfs "${{ steps.fetch_rootfs.outputs.rootfs_dir }}" --output "$THUNK_OUTPUT_DIR" || true
+          fi
+
+          # Method 2: Manually search for thunk libraries in rootfs
+          echo "Searching for existing thunk libraries..."
+          find "${{ steps.fetch_rootfs.outputs.rootfs_dir }}" -type f -name "*thunk*.so*" -exec cp -v {} "$THUNK_OUTPUT_DIR/" \;
+
+          # Method 3: Also check common FEX directories
+          find "$HOME/.fex-emu" -type f -name "*thunk*.so*" -exec cp -v {} "$THUNK_OUTPUT_DIR/" \;
+
+          # List collected files
+          echo "=== Collected ThunkLibs ==="
+          ls -la "$THUNK_OUTPUT_DIR"
+          echo "Total files: $(ls -1 "$THUNK_OUTPUT_DIR" | wc -l)"
+
+          # Set output path for artifact
+          echo "thunk_path=$THUNK_OUTPUT_DIR" >> $GITHUB_OUTPUT
+
+      - name: Upload ThunkLibs as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fex-thunklibs
+          path: ${{ steps.generate.outputs.thunk_path }}
+          if-no-files-found: warn
+          retention-days: 7
