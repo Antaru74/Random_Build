@@ -1,101 +1,84 @@
-name: Get FEX ThunkLibs
+name: Get FEX ThunkLibs (Manual)
 
 on:
-  workflow_dispatch:  # Manual trigger
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04-arm  # ARM64 runner required (GitHub hosted ARM runner)
+    runs-on: ubuntu-24.04-arm
 
     steps:
       - name: Install dependencies
         run: |
           sudo apt update
-          sudo apt install -y wget zstd tar expect
+          sudo apt install -y wget zstd tar squashfs-tools fuse squashfuse
 
-      - name: Download FEX-emu package (Arch Linux ARM64)
+      - name: Download and install FEX-emu package (Arch Linux ARM64)
         run: |
           wget https://repo.archlinuxcn.org/aarch64/fex-emu-2605-1-aarch64.pkg.tar.zst
-
-      - name: Extract package to /usr/local
-        run: |
           mkdir -p /tmp/fex-pkg
           tar --zstd -xf fex-emu-2605-1-aarch64.pkg.tar.zst -C /tmp/fex-pkg
           sudo cp -r /tmp/fex-pkg/usr/* /usr/local/
-          sudo ldconfig  # Update library cache if needed
           echo "/usr/local/lib" | sudo tee /etc/ld.so.conf.d/fex.conf
           sudo ldconfig
 
-      - name: Verify FEX tools
+      - name: Verify FEX Installation
         run: |
-          FEXRootFSFetcher --help || true
-          FEXThunkLibsGenerator --help || true
+          FEXLoader --version || true
+          ls -la /usr/local/bin/FEX* || true
 
-      - name: Run FEXRootFSFetcher (Ubuntu 24.04, option 5)
-        id: fetch_rootfs
+      - name: Download RootFS (SquashFS)
         run: |
-            # Gunakan expect untuk otomatisasi interaksi penuh
-            expect <<'EOF'
-            set timeout 1800  # timeout 30 menit karena download rootfs
-            spawn FEXRootFSFetcher
-        
-            # 1. Tawaran download rootfs
-            expect {
-              -re "RootFS not found.*Do you want to try and download one.*" { send "y\r"; exp_continue }
-              -re "Select an option:" { send "5\r"; exp_continue }
-              -re "Press enter to continue" { send "\r"; exp_continue }
-              -re "Do you want to.*y.*1" { send "y\r"; exp_continue }
-              -re "Enter your choice.*1" { send "1\r"; exp_continue }
-              timeout { puts "Timeout waiting for prompt"; exit 1 }
-              eof
+          mkdir -p $HOME/.fex-emu/RootFS/
+          wget -O $HOME/.fex-emu/RootFS/Ubuntu_24_04.sqsh \
+            https://rootfs.fex-emu.gg/Ubuntu_24_04/2025-12-27/Ubuntu_24_04.sqsh
+
+      - name: Configure FEX RootFS in Config.json
+        run: |
+          mkdir -p $HOME/.fex-emu/
+          cat > $HOME/.fex-emu/Config.json <<EOF
+          {
+            "Config": {
+              "RootFS": "$HOME/.fex-emu/RootFS/Ubuntu_24_04.sqsh"
             }
-            EOF
-        
-            # Verifikasi rootfs
-            sleep 5
-            ROOTFS_DIR="$HOME/.fex-emu/RootFS/ubuntu-24.04"
-            if [ -d "$ROOTFS_DIR" ]; then
-              echo "rootfs_dir=$ROOTFS_DIR" >> $GITHUB_OUTPUT
-            else
-              echo "Mencari direktori rootfs..."
-              FOUND_DIR=$(find $HOME/.fex-emu -type d -name "ubuntu-24.04" | head -1)
-              if [ -n "$FOUND_DIR" ]; then
-                echo "rootfs_dir=$FOUND_DIR" >> $GITHUB_OUTPUT
-              else
-                echo "ERROR: RootFS tidak ditemukan" && exit 1
-              fi
-            fi
+          }
+          EOF
+          cat $HOME/.fex-emu/Config.json
 
-      - name: Generate or collect ThunkLibs
+      - name: Collect ThunkLibs
+        id: collect_thunks
         run: |
           THUNK_OUTPUT_DIR="$HOME/fex-thunklibs"
           mkdir -p "$THUNK_OUTPUT_DIR"
 
-          # Method 1: Use FEXThunkLibsGenerator if available
-          if command -v FEXThunkLibsGenerator &> /dev/null; then
-            echo "Generating ThunkLibs using FEXThunkLibsGenerator..."
-            FEXThunkLibsGenerator --rootfs "${{ steps.fetch_rootfs.outputs.rootfs_dir }}" --output "$THUNK_OUTPUT_DIR" || true
+          # 1. Host-side ThunkLibs (dari instalasi FEX)
+          if [ -d "/usr/local/lib/fex-emu/HostThunks" ]; then
+            echo "Menyalin HostThunks..."
+            cp -rv /usr/local/lib/fex-emu/HostThunks/* "$THUNK_OUTPUT_DIR/" 2>/dev/null || true
           fi
 
-          # Method 2: Manually search for thunk libraries in rootfs
-          echo "Searching for existing thunk libraries..."
-          find "${{ steps.fetch_rootfs.outputs.rootfs_dir }}" -type f -name "*thunk*.so*" -exec cp -v {} "$THUNK_OUTPUT_DIR/" \;
+          # 2. Guest-side ThunkLibs (dari instalasi FEX)
+          if [ -d "/usr/local/share/fex-emu/GuestThunks" ]; then
+            echo "Menyalin GuestThunks..."
+            cp -rv /usr/local/share/fex-emu/GuestThunks/* "$THUNK_OUTPUT_DIR/" 2>/dev/null || true
+          fi
 
-          # Method 3: Also check common FEX directories
-          find "$HOME/.fex-emu" -type f -name "*thunk*.so*" -exec cp -v {} "$THUNK_OUTPUT_DIR/" \;
+          # 3. Mount SquashFS dan cari file thunk di dalamnya
+          mkdir -p /tmp/rootfs-mount
+          sudo mount -t squashfs -o ro "$HOME/.fex-emu/RootFS/Ubuntu_24_04.sqsh" /tmp/rootfs-mount
+          echo "Mencari file thunk di dalam rootfs..."
+          find /tmp/rootfs-mount -type f \( -name "*thunk*.so*" -o -name "*thunk*.a" -o -path "*/ThunkLibs/*" \) -exec cp -v {} "$THUNK_OUTPUT_DIR/" \; 2>/dev/null || true
+          sudo umount /tmp/rootfs-mount
 
-          # List collected files
-          echo "=== Collected ThunkLibs ==="
+          echo "=== ThunkLibs terkumpul ==="
           ls -la "$THUNK_OUTPUT_DIR"
-          echo "Total files: $(ls -1 "$THUNK_OUTPUT_DIR" | wc -l)"
-
-          # Set output path for artifact
+          echo "Jumlah file: $(ls -1 "$THUNK_OUTPUT_DIR" | wc -l)"
           echo "thunk_path=$THUNK_OUTPUT_DIR" >> $GITHUB_OUTPUT
 
       - name: Upload ThunkLibs as artifact
         uses: actions/upload-artifact@v4
         with:
           name: fex-thunklibs
-          path: ${{ steps.generate.outputs.thunk_path }}
+          path: ${{ steps.collect_thunks.outputs.thunk_path }}
           if-no-files-found: warn
           retention-days: 7
