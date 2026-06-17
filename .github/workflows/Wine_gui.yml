@@ -23,21 +23,30 @@ jobs:
             ninja-build \
             libgtkmm-4.0-dev \
             libjson-glib-dev \
-            pkg-config
+            pkg-config \
+            dpkg-dev \
+            fakeroot
 
-      - name: Configure with CMake
+      - name: Configure with CMake (disable type-limits warning)
         working-directory: WineGUI
         run: |
-          cmake -GNinja -B build
+          cmake -GNinja -B build \
+            -DCMAKE_CXX_FLAGS="-Wno-type-limits"
 
       - name: Build WineGUI
         working-directory: WineGUI
         run: |
           cmake --build ./build
 
-      - name: Upload artifact (binary)
+      - name: Create .deb package using CPack
+        working-directory: WineGUI
+        run: |
+          cd build
+          cpack -G DEB
+
+      - name: Upload .deb artifact
         uses: actions/upload-artifact@v4
         with:
-          name: winegui-arm64
-          path: WineGUI/build/bin/winegui
+          name: winegui-arm64-deb
+          path: WineGUI/build/*.deb
           if-no-files-found: error
