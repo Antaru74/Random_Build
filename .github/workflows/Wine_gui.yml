@@ -27,11 +27,13 @@ jobs:
             dpkg-dev \
             fakeroot
 
-      - name: Configure with CMake (disable type-limits warning)
+      - name: Configure with CMake (disable warning & set CPack vars)
         working-directory: WineGUI
         run: |
           cmake -GNinja -B build \
-            -DCMAKE_CXX_FLAGS="-Wno-type-limits"
+            -DCMAKE_CXX_FLAGS="-Wno-type-limits" \
+            -DCPACK_PACKAGE_NAME=winegui \
+            -DCPACK_PACKAGE_VERSION=1.0
 
       - name: Build WineGUI
         working-directory: WineGUI
@@ -39,9 +41,8 @@ jobs:
           cmake --build ./build
 
       - name: Create .deb package using CPack
-        working-directory: WineGUI
+        working-directory: WineGUI/build
         run: |
-          cd build
           cpack -G DEB
 
       - name: Upload .deb artifact
