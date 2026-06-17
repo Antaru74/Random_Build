@@ -1,0 +1,43 @@
+name: Build WineGUI (ARM64)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - name: Clone repository via git link
+        run: |
+          git clone https://github.com/winegui/WineGUI.git
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            g++ \
+            cmake \
+            ninja-build \
+            libgtkmm-4.0-dev \
+            libjson-glib-dev \
+            pkg-config
+
+      - name: Configure with CMake
+        working-directory: WineGUI
+        run: |
+          cmake -GNinja -B build
+
+      - name: Build WineGUI
+        working-directory: WineGUI
+        run: |
+          cmake --build ./build
+
+      - name: Upload artifact (binary)
+        uses: actions/upload-artifact@v4
+        with:
+          name: winegui-arm64
+          path: WineGUI/build/bin/winegui
+          if-no-files-found: error
