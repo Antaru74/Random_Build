@@ -24,30 +24,46 @@ jobs:
             libgtkmm-4.0-dev \
             libjson-glib-dev \
             pkg-config \
-            dpkg-dev \
-            fakeroot
+            dpkg-dev
 
-      - name: Configure with CMake (disable warning & set CPack vars)
+      - name: Configure with CMake (disable warning)
         working-directory: WineGUI
         run: |
           cmake -GNinja -B build \
-            -DCMAKE_CXX_FLAGS="-Wno-type-limits" \
-            -DCPACK_PACKAGE_NAME=winegui \
-            -DCPACK_PACKAGE_VERSION=1.0
+            -DCMAKE_CXX_FLAGS="-Wno-type-limits"
 
       - name: Build WineGUI
         working-directory: WineGUI
         run: |
           cmake --build ./build
 
-      - name: Create .deb package using CPack
-        working-directory: WineGUI/build
+      - name: Create .deb package manually
+        working-directory: WineGUI
         run: |
-          cpack -G DEB
+          # Buat folder staging untuk paket
+          mkdir -p package/usr/local/bin
+          mkdir -p package/DEBIAN
+          
+          # Salin binary
+          cp build/bin/winegui package/usr/local/bin/
+          
+          # Buat file control (metadata paket)
+          cat > package/DEBIAN/control <<EOF
+          Package: winegui
+          Version: 1.0
+          Architecture: arm64
+          Maintainer: GitHub Actions <actions@github.com>
+          Description: WineGUI - A graphical interface for Wine
+           WineGUI is a frontend for managing Wine bottles and running Windows applications.
+          Depends: libgtkmm-4.0, libjson-glib-1.0
+          EOF
+          
+          # Bangun paket .deb
+          dpkg-deb --build package winegui-arm64.deb
 
       - name: Upload .deb artifact
         uses: actions/upload-artifact@v4
         with:
           name: winegui-arm64-deb
-          path: WineGUI/build/*.deb
+          path: WineGUI/winegui-arm64.deb
           if-no-files-found: error
