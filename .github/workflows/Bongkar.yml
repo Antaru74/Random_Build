@@ -1,0 +1,168 @@
+name: Analyze Winlator Repository
+
+on:
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Winlator repository
+        uses: actions/checkout@v4
+        with:
+          repository: brunodev85/winlator
+          path: winlator
+          submodules: true
+          fetch-depth: 0
+
+      - name: Install tree
+        run: sudo apt-get install -y tree
+
+      - name: Analyze repository
+        run: |
+          cd winlator
+          OUTPUT_FILE="winlator_analysis.txt"
+
+          {
+            echo "====================================================="
+            echo "        WINLATOR REPOSITORY ANALYSIS"
+            echo "====================================================="
+            echo ""
+            echo "Repository: https://github.com/brunodev85/winlator"
+            echo "Analysis Date: $(date)"
+            echo ""
+
+            echo "====================================================="
+            echo "1. DIRECTORY STRUCTURE"
+            echo "====================================================="
+            echo ""
+            echo "--- Full tree structure ---"
+            tree -a -L 3
+            echo ""
+            echo "--- Key files in root ---"
+            ls -la
+            echo ""
+
+            echo "====================================================="
+            echo "2. BUILD SYSTEM (Gradle)"
+            echo "====================================================="
+            echo ""
+            echo "--- build.gradle (root) ---"
+            cat build.gradle 2>/dev/null || echo "File not found"
+            echo ""
+            echo "--- settings.gradle ---"
+            cat settings.gradle 2>/dev/null || echo "File not found"
+            echo ""
+            echo "--- gradle.properties ---"
+            cat gradle.properties 2>/dev/null || echo "File not found"
+            echo ""
+
+            echo "====================================================="
+            echo "3. ANDROID MANIFEST & CONFIGURATION"
+            echo "====================================================="
+            echo ""
+            echo "--- AndroidManifest.xml ---"
+            find . -name "AndroidManifest.xml" -exec echo "Found: {}" \; -exec cat {} \;
+            echo ""
+
+            echo "====================================================="
+            echo "4. CORE MANAGER CLASSES (Main Components)"
+            echo "====================================================="
+            echo ""
+            for manager in WinlatorActivity ContainerManager WineManager Box64Manager GraphicsManager InputManager ComponentManager ShortcutManager SettingsManager; do
+              echo "--- $manager ---"
+              find . -name "*$manager*" -type f | while read -r file; do
+                echo "File: $file"
+                head -n 50 "$file" 2>/dev/null || echo "Cannot read file"
+                echo ""
+              done
+            done
+            echo ""
+
+            echo "====================================================="
+            echo "5. CONTAINER SETUP & WINE COMMANDS"
+            echo "====================================================="
+            echo ""
+            echo "--- Shell scripts in assets (likely container setup) ---"
+            find app/src/main/assets -name "*.sh" -type f 2>/dev/null | while read -r script; do
+              echo "Script: $script"
+              cat "$script" 2>/dev/null | head -n 100
+              echo ""
+            done
+            echo ""
+            echo "--- JSON configuration files ---"
+            find . -name "*.json" -type f 2>/dev/null | head -n 20 | while read -r json; do
+              echo "File: $json"
+              cat "$json" 2>/dev/null | head -n 50
+              echo ""
+            done
+            echo ""
+
+            echo "====================================================="
+            echo "6. WINDOW MANAGER / DISPLAY SERVER REFERENCES"
+            echo "====================================================="
+            echo ""
+            echo "--- Searching for X11/Wayland/SurfaceFlinger references ---"
+            grep -r -i -E "(x11|xorg|wayland|surfaceflinger|display|window manager)" --include="*.java" --include="*.kt" --include="*.cpp" --include="*.h" --include="*.sh" 2>/dev/null | head -n 100
+            echo ""
+
+            echo "====================================================="
+            echo "7. LIBRARIES & BINARIES (Wine, Box86/64, PRoot)"
+            echo "====================================================="
+            echo ""
+            echo "--- Shared libraries (.so) in assets ---"
+            find app/src/main/assets -name "*.so" -type f 2>/dev/null | head -n 50
+            echo ""
+            echo "--- Binaries in assets ---"
+            find app/src/main/assets -type f -executable 2>/dev/null | head -n 50
+            echo ""
+
+            echo "====================================================="
+            echo "8. README & DOCUMENTATION"
+            echo "====================================================="
+            echo ""
+            echo "--- README.md ---"
+            cat README.md 2>/dev/null | head -n 200
+            echo ""
+            echo "--- Other documentation files ---"
+            find . -name "*.md" -type f 2>/dev/null | grep -v "README.md" | head -n 20 | while read -r doc; do
+              echo "File: $doc"
+              head -n 50 "$doc" 2>/dev/null
+              echo ""
+            done
+            echo ""
+
+            echo "====================================================="
+            echo "9. INPUT CONTROL PROFILES (*.icp)"
+            echo "====================================================="
+            echo ""
+            find . -name "*.icp" -type f 2>/dev/null | while read -r icp; do
+              echo "File: $icp"
+              cat "$icp" 2>/dev/null | head -n 100
+              echo ""
+            done
+            echo ""
+
+            echo "====================================================="
+            echo "10. ADDITIONAL INSIGHTS"
+            echo "====================================================="
+            echo ""
+            echo "--- File Type Summary ---"
+            find . -type f | sed 's/.*\.//' | sort | uniq -c | sort -nr | head -n 30
+            echo ""
+            echo "--- Total Files & Directories ---"
+            echo "Total files: $(find . -type f | wc -l)"
+            echo "Total directories: $(find . -type d | wc -l)"
+            echo ""
+
+          } > "$OUTPUT_FILE"
+
+          echo "Analysis complete. Output saved to $OUTPUT_FILE"
+          cp "$OUTPUT_FILE" ../
+
+      - name: Upload analysis result
+        uses: actions/upload-artifact@v4
+        with:
+          name: winlator-analysis
+          path: winlator_analysis.txt
