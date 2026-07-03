@@ -1,0 +1,39 @@
+name: Build ARM64 Launcher
+
+on:
+  push:
+    branches: [ "main" ]
+  release:
+    types: [ created ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21' # Sesuaikan dengan versi Go
+
+    - name: Install Cross-Compilation Dependencies (CGO for GUI)
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+
+    - name: Build for Linux ARM64
+      env:
+        GOOS: linux
+        GOARCH: arm64
+        CGO_ENABLED: 1
+        CC: aarch64-linux-gnu-gcc
+      run: |
+        go build -ldflags="-s -w" -o game-launcher-arm64 main.go
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: game-launcher-arm64
+        path: game-launcher-arm64
