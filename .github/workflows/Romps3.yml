@@ -1,0 +1,84 @@
+name: Download ps3 rom and Upload to Gofile
+
+on:
+  workflow_dispatch:
+    inputs:
+      file_url:
+        description: 'Paste URL download ROMSForever di sini'
+        required: true
+        type: string
+        default: 'https://sto1.romsforever.co/0:/PS3-PSN/Grand%20Theft%20Auto%20V%20(USA).zip?...'
+
+jobs:
+  download_and_upload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Free Disk Space (Optimasi Storage)
+        run: |
+          echo "=== Menghapus file sampah untuk memperluas storage ==="
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          df -h
+
+      - name: Download File Game
+        run: |
+          echo "=== Memulai Download ==="
+          # Menggunakan nama file fix agar tidak error karena karakter '?' atau '=' dari token URL
+          FILENAME="GTAV_PS3.zip"
+          
+          # Menggunakan User-Agent Browser Windows untuk mengelabui proteksi dasar
+          curl -L -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" \
+            -o "$FILENAME" "${{ inputs.file_url }}"
+          
+          # Cek ukuran file yang terdownload
+          echo "=== Hasil Download ==="
+          ls -lh "$FILENAME"
+          
+          # Menyimpan nama file ke environment GitHub
+          echo "FILE_NAME=$FILENAME" >> $GITHUB_ENV
+
+      - name: Upload ke Gofile (Tanpa Token)
+        id: gofile
+        run: |
+          echo "=== Mendapatkan Server Gofile Tercepat ==="
+          SERVER_RESPONSE=$(curl -s https://api.gofile.io/servers)
+          SERVER=$(echo $SERVER_RESPONSE | jq -r '.data.servers[0].name')
+          
+          if [ -z "$SERVER" ] || [ "$SERVER" = "null" ]; then
+            echo "Gagal mendapatkan server Gofile, mencoba server default 'store1'"
+            SERVER="store1"
+          fi
+          echo "Menggunakan server: $SERVER"
+
+          echo "=== Memulai Upload (Mohon tunggu, ini butuh waktu jika file besar) ==="
+          UPLOAD_RESPONSE=$(curl -X POST \
+            -F "file=@${{ env.FILE_NAME }}" \
+            "https://${SERVER}.gofile.io/uploadFile")
+          
+          echo "Respon API: $UPLOAD_RESPONSE"
+          
+          STATUS=$(echo $UPLOAD_RESPONSE | jq -r '.status')
+          if [ "$STATUS" != "ok" ]; then
+            echo "❌ Upload gagal!"
+            exit 1
+          fi
+          
+          DOWNLOAD_URL=$(echo $UPLOAD_RESPONSE | jq -r '.data.downloadPage')
+          echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
+          
+          DIRECT_LINK=$(echo $UPLOAD_RESPONSE | jq -r '.data.directLink // empty')
+          if [ -n "$DIRECT_LINK" ]; then
+            echo "DIRECT_LINK=$DIRECT_LINK" >> $GITHUB_ENV
+          fi
+
+      - name: Tampilkan Link Hasil
+        run: |
+          echo "========================================="
+          echo "✅ PROSES SELESAI!"
+          echo "🔗 Halaman download Gofile: ${{ env.DOWNLOAD_URL }}"
+          if [ -n "${{ env.DIRECT_LINK }}" ]; then
+            echo "⚡ Direct link: ${{ env.DIRECT_LINK }}"
+          fi
+          echo "========================================="
