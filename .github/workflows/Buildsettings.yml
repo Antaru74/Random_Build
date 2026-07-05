@@ -24,7 +24,7 @@ jobs:
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
 
-    # 4. Suntikkan Gradle Build System & Bersihkan Resource Non-Standar
+    # 4. Suntikkan Gradle Build System & Bersihkan Resource Non-Standar Global
     - name: Inject Gradle Build System
       run: |
         cd settings_src
@@ -108,10 +108,11 @@ jobs:
         # 7. Pindahkan file kode sumber AOSP ke dalam folder 'app'
         mv src res AndroidManifest.xml app/ 2>/dev/null || true
 
-        # 8. HAPUS FOLDER RESOURCE NON-STANDAR (Perbaikan Utama)
-        # Menghapus folder values-*-feminine atau values-*-masculine yang tidak dikenali Gradle
+        # 8. MEMBERSIHKAN RESOURCE NON-STANDAR SECARA AGRESIF (Perbaikan Utama)
+        # Menghapus semua variasi folder berbasis gender/form yang ditolak oleh Gradle merger
         rm -rf app/res/values-*-feminine
         rm -rf app/res/values-*-masculine
+        rm -rf app/res/values-*-neuter
 
     # 5. Proses Kompilasi Menggunakan Gradlew Lokal
     - name: Build APK with Gradle
