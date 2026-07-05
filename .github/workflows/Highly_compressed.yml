@@ -1,0 +1,90 @@
+name: Download, Highly Compress, and Upload to Gofile (No Token)
+
+on:
+  workflow_dispatch:
+    inputs:
+      file_url:
+        description: 'URL file yang akan didownload'
+        required: true
+        type: string
+        default: 'https://example.com/file.zip'
+      filename:
+        description: 'Nama file hasil download (opsional)'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download file from URL
+        run: |
+          if [ -z "${{ inputs.filename }}" ]; then
+            curl -L -O "${{ inputs.file_url }}"
+          else
+            curl -L -o "${{ inputs.filename }}" "${{ inputs.file_url }}"
+          fi
+          # Ambil nama file yang baru saja di-download
+          echo "DOWNLOADED_FILE=$(ls -t | head -n1)" >> $GITHUB_ENV
+
+      - name: Install 7-Zip
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y p7zip-full
+
+      - name: Highly Compress File (7z Ultra)
+        run: |
+          # Menentukan nama file arsip (menggunakan nama file asli + .7z)
+          ARCHIVE_NAME="${{ env.DOWNLOADED_FILE }}.7z"
+          
+          echo "Memulai kompresi ultra untuk ${{ env.DOWNLOADED_FILE }}..."
+          
+          # Parameter Kompresi:
+          # -mx=9 : Tingkat kompresi Ultra
+          # -m0=lzma2 : Menggunakan algoritma LZMA2 (paling aman & efisien)
+          # -md=64m : Dictionary size 64MB (seimbang antara kompresi tinggi & RAM saat ekstrak)
+          # -ms=on : Solid archive aktif (membuat ukuran jauh lebih kecil)
+          7z a -mx=9 -m0=lzma2 -md=64m -ms=on "$ARCHIVE_NAME" "${{ env.DOWNLOADED_FILE }}"
+          
+          echo "Kompresi selesai!"
+          echo "FILE_NAME=$ARCHIVE_NAME" >> $GITHUB_ENV
+
+      - name: Upload ke Gofile tanpa token
+        id: gofile
+        run: |
+          # 1. Dapatkan server upload terbaik
+          SERVER_RESPONSE=$(curl -s https://api.gofile.io/servers)
+          SERVER=$(echo $SERVER_RESPONSE | jq -r '.data.servers[0].name')
+          echo "Menggunakan server: $SERVER"
+
+          # 2. Upload file (tanpa token)
+          UPLOAD_RESPONSE=$(curl -s -X POST \
+            -F "file=@${{ env.FILE_NAME }}" \
+            "https://${SERVER}.gofile.io/uploadFile")
+          
+          # 3. Cek status
+          STATUS=$(echo $UPLOAD_RESPONSE | jq -r '.status')
+          if [ "$STATUS" != "ok" ]; then
+            echo "Upload gagal: $UPLOAD_RESPONSE"
+            exit 1
+          fi
+          
+          # 4. Ambil link halaman download
+          DOWNLOAD_URL=$(echo $UPLOAD_RESPONSE | jq -r '.data.downloadPage')
+          echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
+          
+          # (Opsional) Ambil direct link jika ada
+          DIRECT_LINK=$(echo $UPLOAD_RESPONSE | jq -r '.data.directLink // empty')
+          if [ -n "$DIRECT_LINK" ]; then
+            echo "DIRECT_LINK=$DIRECT_LINK" >> $GITHUB_ENV
+          fi
+
+      - name: Tampilkan link download
+        run: |
+          echo "✅ Proses Berhasil!"
+          echo "📦 Nama File Arsip: ${{ env.FILE_NAME }}"
+          echo "🔗 Halaman download: ${{ env.DOWNLOAD_URL }}"
+          if [ -n "${{ env.DIRECT_LINK }}" ]; then
+            echo "⚡ Direct link: ${{ env.DIRECT_LINK }}"
+          fi
