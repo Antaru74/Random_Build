@@ -24,15 +24,35 @@ jobs:
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
 
-    # 4. Suntikkan Gradle Wrapper & Build Script ke Projek AOSP
-    # Langkah ini mendownload template build.gradle khusus untuk memmungkinkan aplikasi AOSP di-build dengan Gradle
+    # 4. Suntikkan Gradle Build System (Urutan yang Benar)
     - name: Inject Gradle Build System
       run: |
         cd settings_src
-        # Mengunduh gradle wrapper standar
-        gradle wrapper --gradle-version 8.0
         
-        # Membuat file build.gradle minimalis agar Gradle tahu cara mengompilasi src AOSP ini
+        # 1. Buat folder modul 'app' terlebih dahulu
+        mkdir -p app
+        
+        # 2. Buat file settings.gradle (Wajib untuk Gradle modern)
+        cat <<EOF > settings.gradle
+        pluginManagement {
+            repositories {
+                google()
+                mavenCentral()
+                gradlePluginPortal()
+            }
+        }
+        dependencyResolutionManagement {
+            repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+            repositories {
+                google()
+                mavenCentral()
+            }
+        }
+        rootProject.name = "ASCP_Settings"
+        include ':app'
+        EOF
+        
+        # 3. Buat file build.gradle utama (Root)
         cat <<EOF > build.gradle
         buildscript {
             repositories {
@@ -43,16 +63,9 @@ jobs:
                 classpath 'com.android.tools.build:gradle:8.0.2'
             }
         }
-        
-        allprojects {
-            repositories {
-                google()
-                mavenCentral()
-            }
-        }
         EOF
 
-        # Membuat file build.gradle untuk modul aplikasi
+        # 4. Buat file build.gradle untuk modul ':app'
         cat <<EOF > app/build.gradle
         plugins {
             id 'com.android.application'
@@ -85,16 +98,18 @@ jobs:
         }
         EOF
         
-        # Membuat folder penampung modul jika belum ada struktur standard
-        mkdir -p app
+        # 5. Pindahkan file kode sumber AOSP ke dalam folder 'app' agar sesuai struktur Gradle
         mv src res AndroidManifest.xml app/ 2>/dev/null || true
+        
+        # 6. Sekarang baru buat Gradle Wrapper setelah semua file konfigurasi siap
+        gradle wrapper --gradle-version 8.0.2
 
     # 5. Proses Kompilasi (Build APK)
     - name: Build APK with Gradle
       run: |
         cd settings_src
         chmod +x gradlew
-        ./gradlew assembleRelease --no-daemon
+        ./gradlew :app:assembleRelease --no-daemon
 
     # 6. Membuat Struktur Modul Magisk
     - name: Create Magisk Module Structure
