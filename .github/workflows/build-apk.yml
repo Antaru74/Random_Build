@@ -41,23 +41,12 @@ jobs:
         include ':app'
         EOF
 
-        echo "=== Menulis build.gradle (Root) ==="
+        echo "=== Menulis build.gradle (Root - Bersih dari Duplikasi Repo) ==="
         cat << 'EOF' > build.gradle
         buildscript {
-            repositories {
-                google()
-                mavenCentral()
-            }
             dependencies {
                 classpath 'com.android.tools.build:gradle:8.1.1'
                 classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20'
-            }
-        }
-
-        allprojects {
-            repositories {
-                google()
-                mavenCentral()
             }
         }
         EOF
@@ -299,7 +288,7 @@ jobs:
         }
         EOF
 
-        echo "=== Mengonfigurasi Manual Gradle Wrapper 8.2 (Bypass v9.6) ==="
+        echo "=== Menulis File Pendukung Gradle Wrapper ==="
         cat << 'EOF' > gradle/wrapper/gradle-wrapper.properties
         distributionBase=GRADLE_USER_HOME
         distributionPath=wrapper/dists
@@ -315,14 +304,20 @@ jobs:
         java-version: '17'
         distribution: 'zulu'
 
-    # 3. BUILD PROSES MENJADI APK MENGGUNAKAN GRADLE UTAMA RUNNER
-    - name: Build Debug APK via Gradle
-      run: gradle assembleDebug
+    # 3. KITA BUAT SEBUAH GRADLEW EXECUTABLE KHUSUS UNTUK MEMANGGIL GRADLE 8.2 YANG BENAR
+    - name: Setup Local Gradle Executable
+      run: |
+        curl -sL https://raw.githubusercontent.com/gradle/gradle/master/gradlew -o gradlew
+        chmod +x gradlew
 
-    # 4. UPLOAD HASIL KE ARTIFACT GITHUB
+    # 4. BUILD PROSES MENJADI APK MENGGUNAKAN SCRIPT ./GRADLEW LOKAL (Bukan perintah 'gradle' global)
+    - name: Build Debug APK via Wrapper
+      run: ./gradlew assembleDebug
+
+    # 5. UPLOAD HASIL KE ARTIFACT GITHUB
     - name: Upload APK to Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: ColorTuner-Fixed-APK
+        name: ColorTuner-Final-APK
         path: app/build/outputs/apk/debug/app-debug.apk
         retention-days: 7
