@@ -24,15 +24,27 @@ jobs:
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
 
-    # 4. Suntikkan Gradle Build System (Urutan yang Benar)
+    # 4. Suntikkan Gradle Build System secara Manual (Tanpa Gradle Sistem)
     - name: Inject Gradle Build System
       run: |
         cd settings_src
         
-        # 1. Buat folder modul 'app' terlebih dahulu
+        # 1. Buat folder modul 'app'
         mkdir -p app
         
-        # 2. Buat file settings.gradle (Wajib untuk Gradle modern)
+        # 2. Unduh Gradle Wrapper resmi yang sudah jadi (Bypass Gradle 9.x)
+        curl -LO https://raw.githubusercontent.com/gradle/gradle-distributions/main/wrapper/gradlew
+        chmod +x gradlew
+        mkdir -p gradle/wrapper
+        cat <<EOF > gradle/wrapper/gradle-wrapper.properties
+        distributionBase=GRADLE_USER_HOME
+        distributionPath=wrapper/dists
+        distributionUrl=https\://services.gradle.org/distributions/gradle-8.0.2-bin.zip
+        zipStoreBase=GRADLE_USER_HOME
+        zipStorePath=wrapper/dists
+        EOF
+        
+        # 3. Buat file settings.gradle
         cat <<EOF > settings.gradle
         pluginManagement {
             repositories {
@@ -52,7 +64,7 @@ jobs:
         include ':app'
         EOF
         
-        # 3. Buat file build.gradle utama (Root)
+        # 4. Buat file build.gradle utama (Root)
         cat <<EOF > build.gradle
         buildscript {
             repositories {
@@ -65,7 +77,7 @@ jobs:
         }
         EOF
 
-        # 4. Buat file build.gradle untuk modul ':app'
+        # 5. Buat file build.gradle untuk modul ':app'
         cat <<EOF > app/build.gradle
         plugins {
             id 'com.android.application'
@@ -98,17 +110,13 @@ jobs:
         }
         EOF
         
-        # 5. Pindahkan file kode sumber AOSP ke dalam folder 'app' agar sesuai struktur Gradle
+        # 6. Pindahkan file kode sumber AOSP ke dalam folder 'app'
         mv src res AndroidManifest.xml app/ 2>/dev/null || true
-        
-        # 6. Sekarang baru buat Gradle Wrapper setelah semua file konfigurasi siap
-        gradle wrapper --gradle-version 8.0.2
 
-    # 5. Proses Kompilasi (Build APK)
+    # 5. Proses Kompilasi Menggunakan Gradlew Lokal (Bukan Sistem)
     - name: Build APK with Gradle
       run: |
         cd settings_src
-        chmod +x gradlew
         ./gradlew :app:assembleRelease --no-daemon
 
     # 6. Membuat Struktur Modul Magisk
