@@ -18,9 +18,8 @@ jobs:
       run: |
         echo "=== Menyiapkan Direktori ==="
         mkdir -p app/src/main/java/com/custom/colortuner
-        mkdir -p app/src/main/java/com/custom/colortuner/ui
         mkdir -p app/src/main/res/layout
-        mkdir -p app/src/main/res/values
+        mkdir -p gradle/wrapper
 
         echo "=== Menulis settings.gradle ==="
         cat << 'EOF' > settings.gradle
@@ -44,18 +43,29 @@ jobs:
 
         echo "=== Menulis build.gradle (Root) ==="
         cat << 'EOF' > build.gradle
-        plugins {
-            id 'com.android.application' version '8.1.1' apply false
-            id 'org.jetbrains.kotlin.android' version '1.8.20' apply false
+        buildscript {
+            repositories {
+                google()
+                mavenCentral()
+            }
+            dependencies {
+                classpath 'com.android.tools.build:gradle:8.1.1'
+                classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20'
+            }
+        }
+
+        allprojects {
+            repositories {
+                google()
+                mavenCentral()
+            }
         }
         EOF
 
         echo "=== Menulis app/build.gradle ==="
         cat << 'EOF' > app/build.gradle
-        plugins {
-            id 'com.android.application'
-            id 'org.jetbrains.kotlin.android'
-        }
+        apply plugin: 'com.android.application'
+        apply plugin: 'kotlin-android'
 
         android {
             namespace 'com.custom.colortuner'
@@ -188,109 +198,115 @@ jobs:
         cat << 'EOF' > app/src/main/java/com/custom/colortuner/MainActivity.kt
         package com.custom.colortuner
 
-                import android.os.Bundle
-                import android.widget.SeekBar
-                import androidx.appcompat.app.AppCompatActivity
-                import java.io.DataOutputStream
-                import kotlin.math.cos
-                import kotlin.math.sin
+        import android.os.Bundle
+        import android.widget.SeekBar
+        import androidx.appcompat.app.AppCompatActivity
+        import java.io.DataOutputStream
+        import kotlin.math.cos
+        import kotlin.math.sin
 
-                class MainActivity : AppCompatActivity() {
+        class MainActivity : AppCompatActivity() {
 
-                    private var hue = 0.0
-                    private var saturation = 1.0
-                    private var intensity = 1.0
-                    private var contrast = 1.0
+            private var hue = 0.0
+            private var saturation = 1.0
+            private var intensity = 1.0
+            private var contrast = 1.0
 
-                    override fun onCreate(savedInstanceState: Bundle?) {
-                        super.onCreate(savedInstanceState)
-                        setContentView(R.layout.activity_main)
+            override fun onCreate(savedInstanceState: Bundle?) {
+                super.onCreate(savedInstanceState)
+                setContentView(R.layout.activity_main)
 
-                        val seekHue = findViewById<SeekBar>(R.id.seekbar_hue)
-                        val seekSat = findViewById<SeekBar>(R.id.seekbar_saturation)
-                        val seekInt = findViewById<SeekBar>(R.id.seekbar_intensity)
-                        val seekCon = findViewById<SeekBar>(R.id.seekbar_contrast)
+                val seekHue = findViewById<SeekBar>(R.id.seekbar_hue)
+                val seekSat = findViewById<SeekBar>(R.id.seekbar_saturation)
+                val seekInt = findViewById<SeekBar>(R.id.seekbar_intensity)
+                val seekCon = findViewById<SeekBar>(R.id.seekbar_contrast)
 
-                        seekHue.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                            override fun onProgressChanged(s: SeekBar?, p: Int, f: Boolean) {
-                                hue = p.toDouble()
-                                updateColorEngine()
-                            }
-                            override fun onStartTrackingTouch(s: SeekBar?) {}
-                            override fun onStopTrackingTouch(s: SeekBar?) {}
-                        })
-
-                        seekSat.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                            override fun onProgressChanged(s: SeekBar?, p: Int, f: Boolean) {
-                                saturation = p.toDouble() / 100.0
-                                updateColorEngine()
-                            }
-                            override fun onStartTrackingTouch(s: SeekBar?) {}
-                            override fun onStopTrackingTouch(s: SeekBar?) {}
-                        })
-
-                        seekInt.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                            override fun onProgressChanged(s: SeekBar?, p: Int, f: Boolean) {
-                                intensity = p.toDouble() / 100.0
-                                updateColorEngine()
-                            }
-                            override fun onStartTrackingTouch(s: SeekBar?) {}
-                            override fun onStopTrackingTouch(s: SeekBar?) {}
-                        })
-
-                        seekCon.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                            override fun onProgressChanged(s: SeekBar?, p: Int, f: Boolean) {
-                                contrast = p.toDouble() / 100.0
-                                updateColorEngine()
-                            }
-                            override fun onStartTrackingTouch(s: SeekBar?) {}
-                            override fun onStopTrackingTouch(s: SeekBar?) {}
-                        })
+                seekHue.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(s: SeekBar?, p: Int, f: Boolean) {
+                        hue = p.toDouble()
+                        updateColorEngine()
                     }
+                    override fun onStartTrackingTouch(s: SeekBar?) {}
+                    override fun onStopTrackingTouch(s: SeekBar?) {}
+                })
 
-                    private fun updateColorEngine() {
-                        val angle = Math.toRadians(hue)
-                        val c = cos(angle)
-                        val s = sin(angle)
-
-                        val rY = 0.299
-                        val gY = 0.587
-                        val bY = 0.114
-
-                        val gain = contrast * intensity
-
-                        val rX = (rY + (1.0 - rY) * c + 0.143 * s) * gain * saturation
-                        val gX = (gY - gY * c - 0.143 * s) * gain * saturation
-                        val bX = (bY - bY * c + (1.0 - bY) * s) * gain * saturation
-
-                        val matrixString = String.format(
-                            "%.2f,0.0,0.0,0.0,0.0,%.2f,0.0,0.0,0.0,0.0,%.2f,0.0,0.0,0.0,0.0,1.0",
-                            rX.coerceIn(0.0, 2.0),
-                            gX.coerceIn(0.0, 2.0),
-                            bX.coerceIn(0.0, 2.0)
-                        )
-
-                        executeRootCommand("settings put secure accessibility_display_color_matrix_enabled 1")
-                        executeRootCommand("settings put secure accessibility_display_color_matrix \"$matrixString\"")
+                seekSat.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(s: SeekBar?, p: Int, f: Boolean) {
+                        saturation = p.toDouble() / 100.0
+                        updateColorEngine()
                     }
+                    override fun onStartTrackingTouch(s: SeekBar?) {}
+                    override fun onStopTrackingTouch(s: SeekBar?) {}
+                })
 
-                    private fun executeRootCommand(command: String) {
-                        try {
-                            val process = Runtime.getRuntime().exec("su")
-                            val os = DataOutputStream(process.outputStream)
-                            os.writeBytes("$command\n")
-                            os.writeBytes("exit\n")
-                            os.flush()
-                            process.waitFor()
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
+                seekInt.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(s: SeekBar?, p: Int, f: Boolean) {
+                        intensity = p.toDouble() / 100.0
+                        updateColorEngine()
                     }
+                    override fun onStartTrackingTouch(s: SeekBar?) {}
+                    override fun onStopTrackingTouch(s: SeekBar?) {}
+                })
+
+                seekCon.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(s: SeekBar?, p: Int, f: Boolean) {
+                        contrast = p.toDouble() / 100.0
+                        updateColorEngine()
+                    }
+                    override fun onStartTrackingTouch(s: SeekBar?) {}
+                    override fun onStopTrackingTouch(s: SeekBar?) {}
+                })
+            }
+
+            private fun updateColorEngine() {
+                val angle = Math.toRadians(hue)
+                val c = cos(angle)
+                val s = sin(angle)
+
+                val rY = 0.299
+                val gY = 0.587
+                val bY = 0.114
+
+                val gain = contrast * intensity
+
+                val rX = (rY + (1.0 - rY) * c + 0.143 * s) * gain * saturation
+                val gX = (gY - gY * c - 0.143 * s) * gain * saturation
+                val bX = (bY - bY * c + (1.0 - bY) * s) * gain * saturation
+
+                val matrixString = String.format(
+                    "%.2f,0.0,0.0,0.0,0.0,%.2f,0.0,0.0,0.0,0.0,%.2f,0.0,0.0,0.0,0.0,1.0",
+                    rX.coerceIn(0.0, 2.0),
+                    gX.coerceIn(0.0, 2.0),
+                    bX.coerceIn(0.0, 2.0)
+                )
+
+                executeRootCommand("settings put secure accessibility_display_color_matrix_enabled 1")
+                executeRootCommand("settings put secure accessibility_display_color_matrix \"$matrixString\"")
+            }
+
+            private fun executeRootCommand(command: String) {
+                try {
+                    val process = Runtime.getRuntime().exec("su")
+                    val os = DataOutputStream(process.outputStream)
+                    os.writeBytes("$command\n")
+                    os.writeBytes("exit\n")
+                    os.flush()
+                    process.waitFor()
+                } catch (e: Exception) {
+                    e.printStackTrace()
                 }
+            }
+        }
         EOF
 
-        echo "=== Inisialisasi Gradle Wrapper ==="
-        gradle wrapper --gradle-version 8.2
+        echo "=== Mengonfigurasi Manual Gradle Wrapper 8.2 (Bypass v9.6) ==="
+        cat << 'EOF' > gradle/wrapper/gradle-wrapper.properties
+        distributionBase=GRADLE_USER_HOME
+        distributionPath=wrapper/dists
+        distributionUrl=https\://services.gradle.org/distributions/gradle-8.2-bin.zip
+        zipStoreBase=GRADLE_USER_HOME
+        zipStorePath=wrapper/dists
+        EOF
 
     # 2. SETUP JAVA ENVIRONMENT
     - name: Set up JDK 17
@@ -298,20 +314,15 @@ jobs:
       with:
         java-version: '17'
         distribution: 'zulu'
-        cache: gradle
 
-    # 3. SET PERMISSION GRADLE
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
+    # 3. BUILD PROSES MENJADI APK MENGGUNAKAN GRADLE UTAMA RUNNER
+    - name: Build Debug APK via Gradle
+      run: gradle assembleDebug
 
-    # 4. BUILD PROSES MENJADI APK
-    - name: Build Debug APK
-      run: ./gradlew assembleDebug
-
-    # 5. UPLOAD HASIL KE ARTIFACT GITHUB
+    # 4. UPLOAD HASIL KE ARTIFACT GITHUB
     - name: Upload APK to Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: ColorTuner-AllInOne-APK
+        name: ColorTuner-Fixed-APK
         path: app/build/outputs/apk/debug/app-debug.apk
         retention-days: 7
