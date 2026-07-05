@@ -18,6 +18,30 @@ jobs:
   upload:
     runs-on: ubuntu-latest
     steps:
+      - name: Lapangkan Penyimpanan (Free Disk Space)
+        run: |
+          echo "=== Harddisk Sebelum Dibersihkan ==="
+          df -h
+          echo "===================================="
+          
+          # Hapus paket-paket besar bawaan GitHub yang tidak diperlukan
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          
+          # Bersihkan cache apt
+          sudo apt-get clean
+          
+          echo "=== Harddisk Setelah Dibersihkan ==="
+          df -h
+          echo "===================================="
+
+      - name: Install 7-Zip
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y p7zip-full
+
       - name: Download file from URL
         run: |
           if [ -z "${{ inputs.filename }}" ]; then
@@ -28,27 +52,19 @@ jobs:
           # Ambil nama file yang baru saja di-download
           echo "DOWNLOADED_FILE=$(ls -t | head -n1)" >> $GITHUB_ENV
 
-      - name: Install 7-Zip
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y p7zip-full
-
       - name: Highly Compress File (7z Ultra)
         run: |
-          # Menentukan nama file arsip (menggunakan nama file asli + .7z)
           ARCHIVE_NAME="${{ env.DOWNLOADED_FILE }}.7z"
-          
           echo "Memulai kompresi ultra untuk ${{ env.DOWNLOADED_FILE }}..."
           
-          # Parameter Kompresi:
-          # -mx=9 : Tingkat kompresi Ultra
-          # -m0=lzma2 : Menggunakan algoritma LZMA2 (paling aman & efisien)
-          # -md=64m : Dictionary size 64MB (seimbang antara kompresi tinggi & RAM saat ekstrak)
-          # -ms=on : Solid archive aktif (membuat ukuran jauh lebih kecil)
-          7z a -mx=9 -m0=lzma2 -md=64m -ms=on "$ARCHIVE_NAME" "${{ env.DOWNLOADED_FILE }}"
+          # Parameter dioptimalkan agar tidak memakan RAM berlebih di runner (menggunakan -md=32m)
+          7z a -mx=9 -m0=lzma2 -md=32m -ms=on "$ARCHIVE_NAME" "${{ env.DOWNLOADED_FILE }}"
           
           echo "Kompresi selesai!"
           echo "FILE_NAME=$ARCHIVE_NAME" >> $GITHUB_ENV
+          
+          # Hapus file original yang belum dikompresi agar space tidak penuh saat upload
+          rm -f "${{ env.DOWNLOADED_FILE }}"
 
       - name: Upload ke Gofile tanpa token
         id: gofile
