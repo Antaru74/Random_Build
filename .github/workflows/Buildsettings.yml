@@ -1,14 +1,14 @@
 name: Build Settings APK and Magisk Module
 
 on:
-  workflow_dispatch: # Memungkinkan kamu menjalankan build secara manual dari tab Actions
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-    # 1. Setup Java Environment (Diperlukan untuk Gradle/Android Build)
+    # 1. Setup Java Environment
     - name: Set up JDK 17
       uses: actions/setup-java@v4
       with:
@@ -20,26 +20,87 @@ jobs:
       run: |
         git clone --depth=1 https://github.com/ascp-oss/android_packages_apps_Settings.git settings_src
 
-    # 3. Setup Android SDK & Build Tools
+    # 3. Setup Android SDK
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
 
-    # 4. Proses Kompilasi (Build APK)
-    # Catatan: Langkah ini berasumsi repositori sudah memiliki wrapper Gradle (gradlew).
-    # Jika membutuhkan stub framework eksternal, skrip akan mendownloadnya secara otomatis jika dikonfigurasi di build.gradle.
+    # 4. Suntikkan Gradle Wrapper & Build Script ke Projek AOSP
+    # Langkah ini mendownload template build.gradle khusus untuk memmungkinkan aplikasi AOSP di-build dengan Gradle
+    - name: Inject Gradle Build System
+      run: |
+        cd settings_src
+        # Mengunduh gradle wrapper standar
+        gradle wrapper --gradle-version 8.0
+        
+        # Membuat file build.gradle minimalis agar Gradle tahu cara mengompilasi src AOSP ini
+        cat <<EOF > build.gradle
+        buildscript {
+            repositories {
+                google()
+                mavenCentral()
+            }
+            dependencies {
+                classpath 'com.android.tools.build:gradle:8.0.2'
+            }
+        }
+        
+        allprojects {
+            repositories {
+                google()
+                mavenCentral()
+            }
+        }
+        EOF
+
+        # Membuat file build.gradle untuk modul aplikasi
+        cat <<EOF > app/build.gradle
+        plugins {
+            id 'com.android.application'
+        }
+        
+        android {
+            namespace 'com.android.settings'
+            compileSdk 34
+        
+            defaultConfig {
+                applicationId "com.android.settings"
+                minSdk 30
+                targetSdk 34
+                versionCode 1
+                versionName "1.0"
+            }
+        
+            sourceSets {
+                main {
+                    manifest.srcFile 'AndroidManifest.xml'
+                    java.srcDirs = ['src']
+                    res.srcDirs = ['res']
+                    assets.srcDirs = ['assets']
+                }
+            }
+            
+            lintOptions {
+                abortOnError false
+            }
+        }
+        EOF
+        
+        # Membuat folder penampung modul jika belum ada struktur standard
+        mkdir -p app
+        mv src res AndroidManifest.xml app/ 2>/dev/null || true
+
+    # 5. Proses Kompilasi (Build APK)
     - name: Build APK with Gradle
       run: |
         cd settings_src
         chmod +x gradlew
         ./gradlew assembleRelease --no-daemon
-      continue-on-error: true # Mengantisipasi jika ada error grading karena hidden API
 
-    # 5. Membuat Struktur Modul Magisk (Systemless)
+    # 6. Membuat Struktur Modul Magisk
     - name: Create Magisk Module Structure
       run: |
         mkdir -p magisk_module/system/system_ext/priv-app/Settings
         
-        # Membuat file properti modul Magisk
         cat <<EOF > magisk_module/module.prop
         id=ascp_settings_replacer
         name=ASCP Settings Replacer
@@ -49,23 +110,17 @@ jobs:
         description=Menggantikan /system_ext/priv-app/Settings/Settings.apk secara systemless menggunakan Magisk. Saat modul di-uninstall, Settings bawaan ROM akan kembali otomatis.
         EOF
 
-        # Menyalin APK hasil build ke dalam struktur modul
-        # Menyesuaikan dengan target jalur /system_ext/priv-app/Settings/
-        if [ -d "settings_src/app/build/outputs/apk/release" ]; then
-          cp settings_src/app/build/outputs/apk/release/*.apk magisk_module/system/system_ext/priv-app/Settings/Settings.apk
-        else
-          # Fallback jika struktur foldernya berbeda (misal build root)
-          find settings_src -name "*.apk" -exec cp {} magisk_module/system/system_ext/priv-app/Settings/Settings.apk \;
-        fi
+        # Menyalin APK ke folder modul Magisk
+        find settings_src -name "*.apk" -exec cp {} magisk_module/system/system_ext/priv-app/Settings/Settings.apk \;
 
-    # 6. Mengompres Modul Menjadi File ZIP
+    # 7. Mengompres Modul Menjadi File ZIP
     - name: Package Magisk Module to ZIP
       run: |
         cd magisk_module
         zip -r ../ASCP_Settings_Magisk_Module.zip ./*
         cd ..
 
-    # 7. Mengunggah Hasil ZIP Ke GitHub Artifacts (Bisa Kamu Download)
+    # 8. Mengunggah Hasil ZIP Ke GitHub Artifacts
     - name: Upload Magisk Module Artifact
       uses: actions/upload-artifact@v4
       with:
