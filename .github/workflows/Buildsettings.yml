@@ -24,8 +24,7 @@ jobs:
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
 
-    # 4. Suntikkan Gradle Build System secara Manual
-    # Membuat file konfigurasi SEBELUM memanggil perintah wrapper
+    # 4. Suntikkan Gradle Build System & Bersihkan Resource Non-Standar
     - name: Inject Gradle Build System
       run: |
         cd settings_src
@@ -33,11 +32,11 @@ jobs:
         # 1. Buat folder modul 'app'
         mkdir -p app
         
-        # 2. Buat file settings.gradle kosong (pancingan awal untuk gradle init)
+        # 2. Buat file settings.gradle dan build.gradle kosong (pancingan awal untuk wrapper)
         touch settings.gradle
         touch build.gradle
         
-        # 3. Buat wrapper menggunakan perintah gradle sistem, tetapi diisolasi ke versi 8.0.2
+        # 3. Buat wrapper menggunakan perintah gradle sistem diisolasi ke versi 8.0.2
         gradle wrapper --gradle-version 8.0.2
         
         # 4. Timpa file settings.gradle dengan konfigurasi yang benar
@@ -109,7 +108,12 @@ jobs:
         # 7. Pindahkan file kode sumber AOSP ke dalam folder 'app'
         mv src res AndroidManifest.xml app/ 2>/dev/null || true
 
-    # 5. Proses Kompilasi Menggunakan Gradlew Lokal yang Baru Dibuat
+        # 8. HAPUS FOLDER RESOURCE NON-STANDAR (Perbaikan Utama)
+        # Menghapus folder values-*-feminine atau values-*-masculine yang tidak dikenali Gradle
+        rm -rf app/res/values-*-feminine
+        rm -rf app/res/values-*-masculine
+
+    # 5. Proses Kompilasi Menggunakan Gradlew Lokal
     - name: Build APK with Gradle
       run: |
         cd settings_src
