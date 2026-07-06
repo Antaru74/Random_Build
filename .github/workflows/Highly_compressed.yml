@@ -1,4 +1,4 @@
-name: Download, Smart Extract, Highly Compress, and Upload
+name: Download Smart Extract Highly Compress and Upload
 
 on:
   workflow_dispatch:
@@ -37,57 +37,50 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y p7zip-full
 
-      - name: Langkah 1: Download File ZIP Asli
+      - name: Download File ZIP Asli Pertama
         run: |
           echo "Memulai download file ZIP asli sebesar 60 GB..."
           curl -L -o "game_asli.zip" "${{ inputs.file_url }}"
           echo "Download selesai!"
 
-      - name: Langkah 2 & 3: Ekstrak Pintar & Hapus ZIP Bertahap (Hemat Space)
+      - name: Ekstrak Pintar dan Hapus ZIP Bertahap
         shell: python
         run: |
-          import zipfile
-          import os
-
+          import zipfile, os
           zip_path = "game_asli.zip"
           extract_dir = "game_mentah"
           os.makedirs(extract_dir, exist_ok=True)
-
           print("Membuka file ZIP dan memulai ekstraksi aman...")
           with zipfile.ZipFile(zip_path, 'r') as zip_ref:
               files = zip_ref.namelist()
               total_files = len(files)
-              
               for index, file in enumerate(files, 1):
                   zip_ref.extract(file, extract_dir)
-                  if index % 50 == 0 or index == total_files:
+                  if index % 100 == 0 or index == total_files:
                       print(f"Progress Ekstraksi: {index}/{total_files} file selesai.")
-
           print("Ekstraksi selesai 100%!")
           print("Menghapus file ZIP bawaan untuk mengosongkan space...")
           os.remove(zip_path)
           print("File ZIP bawaan BERHASIL DIHAPUS.")
 
-      - name: Langkah 4: Kompres Hasil Ekstraksi ke 7z (Real Compression)
+      - name: Kompres Hasil Ekstraksi ke 7z Real Compression
         run: |
           echo "Memeriksa isi folder hasil ekstraksi:"
           ls -lh game_mentah
           
           echo "Memulai kompresi ulang dari folder mentah menjadi .7z..."
-          # Ditambahkan -mmt=on agar kompresi menggunakan seluruh core CPU secara maksimal (lebih cepat)
           7z a -mx=5 -m0=lzma2 -mmt=on -ms=on "${{ inputs.filename }}" ./game_mentah/*
           
           echo "Kompresi selesai! Menghapus folder mentah..."
           rm -rf game_mentah
           echo "FILE_NAME=${{ inputs.filename }}" >> $GITHUB_ENV
 
-      - name: Langkah 5: Upload ke Gofile tanpa token
+      - name: Upload ke Gofile tanpa token
         run: |
           SERVER_RESPONSE=$(curl -s https://api.gofile.io/servers)
           SERVER=$(echo $SERVER_RESPONSE | jq -r '.data.servers[0].name')
           echo "Menggunakan server: $SERVER"
 
-          # Memastikan file dibaca dari environment yang tepat
           UPLOAD_RESPONSE=$(curl -s -X POST \
             -F "file=@${{ env.FILE_NAME }}" \
             "https://${SERVER}.gofile.io/uploadFile")
