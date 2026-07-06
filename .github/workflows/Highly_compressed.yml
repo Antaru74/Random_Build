@@ -1,4 +1,4 @@
-name: Real Highly Compress and Upload to Gofile (No Token)
+name: Download, Smart Extract, Highly Compress, and Upload
 
 on:
   workflow_dispatch:
@@ -9,7 +9,7 @@ on:
         type: string
         default: 'https://example.com/file.zip'
       filename:
-        description: 'Nama file hasil akhir (contoh: Game_Ultra.7z)'
+        description: 'Nama file hasil akhir'
         required: false
         type: string
         default: 'ArmoredCore_Highly_Compressed.7z'
@@ -37,28 +37,53 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y p7zip-full
 
-      - name: Proses Ekstrak dan Kompresi Ulang (Real Highly Compressed)
+      - name: Langkah 1: Download File ZIP Asli
         run: |
-          # 1. Buat folder sementara
-          mkdir -p game_mentah
+          echo "Memulai download file ZIP asli sebesar 60 GB..."
+          curl -L -o "game_asli.zip" "${{ inputs.file_url }}"
+          echo "Download selesai!"
+
+      - name: Langkah 2 & 3: Ekstrak Pintar & Hapus ZIP Bertahap (Hemat Space)
+        shell: python
+        run: |
+          import zipfile
+          import os
+
+          zip_path = "game_asli.zip"
+          extract_dir = "game_mentah"
+          os.makedirs(extract_dir, exist_ok=True)
+
+          print("Membuka file ZIP dan memulai ekstraksi aman...")
+          with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+              files = zip_ref.namelist()
+              total_files = len(files)
+              
+              for index, file in enumerate(files, 1):
+                  # Ekstrak file satu per satu
+                  zip_ref.extract(file, extract_dir)
+                  if index % 10 == 0 or index == total_files:
+                      print(f"Progress Ekstraksi: {index}/{total_files} file selesai.")
+
+          print("Ekstraksi selesai 100%!")
+          print("Menghapus file ZIP bawaan untuk mengosongkan space...")
+          os.remove(zip_path)
+          print("File ZIP bawaan BERHASIL DIHAPUS.")
+
+      - name: Langkah 4: Kompres Hasil Ekstraksi ke 7z (Real Compression)
+        run: |
+          echo "Memeriksa isi folder hasil ekstraksi:"
+          ls -lh game_mentah
           
-          echo "Mendownload dan langsung mengekstrak isi ZIP ke folder mentah..."
-          # Menggunakan bsdtar (jika tersedia) atau 7z untuk ekstrak langsung dari URL ke folder tanpa simpan .zip nya
-          sudo apt-get install -y bsdtar
-          curl -L "${{ inputs.file_url }}" | bsdtar -xf - -C game_mentah/
-          
-          echo "Ekstrak selesai. Melakukan kompresi ulang tingkat tinggi pada isi file asli..."
-          # Sekarang 7z akan mengompres isi file mentah game (bukan file zip-nya).
-          # Ini yang akan membuat ukuran file berkurang drastis!
+          echo "Memulai kompresi ulang dari folder mentah menjadi .7z..."
+          # -mx=5 : Kompresi tinggi yang cepat agar tidak timeout
+          # -m0=lzma2 : Algoritma peras data maksimal
           7z a -mx=5 -m0=lzma2 -ms=on "${{ inputs.filename }}" ./game_mentah/*
           
-          echo "Kompresi ulang berhasil!"
-          echo "FILE_NAME=${{ inputs.filename }}" >> $GITHUB_ENV
-          
-          # Hapus folder mentah untuk melegakan space sebelum upload
+          echo "Kompresi selesai! Menghapus folder mentah..."
           rm -rf game_mentah
+          echo "FILE_NAME=${{ inputs.filename }}" >> $GITHUB_ENV
 
-      - name: Upload ke Gofile tanpa token
+      - name: Langkah 5: Upload ke Gofile tanpa token
         run: |
           SERVER_RESPONSE=$(curl -s https://api.gofile.io/servers)
           SERVER=$(echo $SERVER_RESPONSE | jq -r '.data.servers[0].name')
@@ -84,9 +109,9 @@ jobs:
 
       - name: Tampilkan link download
         run: |
-          echo "✅ Proses Berhasil!"
-          echo "📦 Nama File Arsip: ${{ env.FILE_NAME }}"
-          echo "🔗 Halaman download: ${{ env.DOWNLOAD_URL }}"
+          echo "✅ Semua Alur Berhasil Dieksekusi!"
+          echo "📦 Nama File Baru: ${{ env.FILE_NAME }}"
+          echo "🔗 Halaman download Gofile: ${{ env.DOWNLOAD_URL }}"
           if [ -n "${{ env.DIRECT_LINK }}" ]; then
             echo "⚡ Direct link: ${{ env.DIRECT_LINK }}"
           fi
