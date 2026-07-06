@@ -1,4 +1,4 @@
-name: Download, Highly Compress, and Upload to Gofile (No Token)
+name: Download, Stream Compress, and Upload to Gofile (No Token)
 
 on:
   workflow_dispatch:
@@ -9,10 +9,10 @@ on:
         type: string
         default: 'https://example.com/file.zip'
       filename:
-        description: 'Nama file hasil download (opsional)'
+        description: 'Nama file hasil akhir (opsional, contoh: game.7z)'
         required: false
         type: string
-        default: ''
+        default: 'Arsip_Highly_Compressed.7z'
 
 jobs:
   upload:
@@ -20,11 +20,6 @@ jobs:
     steps:
       - name: Pembersihan Ekstrem (Brutal Free Disk Space)
         run: |
-          echo "=== Harddisk Sebelum Pembersihan Brutal ==="
-          df -h
-          echo "=========================================="
-          
-          # 1. Hapus Software Besar & Runtimes
           sudo rm -rf /usr/share/dotnet
           sudo rm -rf /usr/local/lib/android
           sudo rm -rf /opt/ghc
@@ -32,47 +27,35 @@ jobs:
           sudo rm -rf /usr/local/share/boost
           sudo rm -rf /usr/share/swift
           sudo rm -rf /usr/local/clang
-          
-          # 2. Hapus Docker Images bawaan (Ini yang paling banyak makan tempat!)
           sudo docker image prune --all --force
-          
-          # 3. Hapus Paket APT yang tidak berguna & browser
           sudo apt-get remove --purge -y azure-cli google-chrome-stable microsoft-edge-stable firefox powershell mono-devel
           sudo apt-get autoremove -y
           sudo apt-get clean
-          
-          echo "=== Harddisk Setelah Pembersihan Brutal ==="
-          df -h
-          echo "=========================================="
 
       - name: Install 7-Zip
         run: |
           sudo apt-get update
           sudo apt-get install -y p7zip-full
 
-      - name: Download file from URL
+      - name: Download & Compress via Streaming (On-The-Fly)
         run: |
-          if [ -z "${{ inputs.filename }}" ]; then
-            curl -L -O "${{ inputs.file_url }}"
-          else
-            curl -L -o "${{ inputs.filename }}" "${{ inputs.file_url }}"
+          # Menentukan nama file output
+          OUTPUT_NAME="${{ inputs.filename }}"
+          if [ -z "$OUTPUT_NAME" ]; then
+            OUTPUT_NAME="Hasil_Kompresi.7z"
           fi
-          echo "DOWNLOADED_FILE=$(ls -t | head -n1)" >> $GITHUB_ENV
-
-      - name: Highly Compress File (7z Ultra - Fast Streaming Mode)
-        run: |
-          ARCHIVE_NAME="${{ env.DOWNLOADED_FILE }}.7z"
-          echo "Memulai kompresi ultra untuk ${{ env.DOWNLOADED_FILE }}..."
           
-          # Menggunakan -md=32m agar RAM aman & proses kompresi lebih cepat
-          # sehingga tidak memakan space buffer temporer terlalu besar
-          7z a -mx=9 -m0=lzma2 -md=32m -ms=on "$ARCHIVE_NAME" "${{ env.DOWNLOADED_FILE }}"
+          echo "Memulai proses Streaming Download + Kompresi Tingkat Tinggi..."
+          echo "File asli tidak akan disimpan di harddisk untuk menghemat space."
           
-          echo "Kompresi selesai!"
-          echo "FILE_NAME=$ARCHIVE_NAME" >> $GITHUB_ENV
+          # Trik Utama:
+          # curl -L download file -> dialirkan lewat tanda pipe (|) -> diterima oleh 7z
+          # -si : memerintahkan 7z untuk membaca data dari aliran/stream (Standard Input)
+          # -mx=5 : kompresi tingkat tinggi yang cepat dan aman
+          curl -L "${{ inputs.file_url }}" | 7z a -si -mx=9 -m0=lzma2 -mmt=on "$OUTPUT_NAME"
           
-          # LANGSUNG hapus file original setelah baris kompresi selesai
-          rm -f "${{ env.DOWNLOADED_FILE }}"
+          echo "Proses Streaming dan Kompresi Selesai!"
+          echo "FILE_NAME=$OUTPUT_NAME" >> $GITHUB_ENV
 
       - name: Upload ke Gofile tanpa token
         id: gofile
