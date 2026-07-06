@@ -1,4 +1,4 @@
-name: Large Storage SSH Runner
+name: Large Storage Cloudflare SSH
 
 on:
   workflow_dispatch:
@@ -10,7 +10,6 @@ jobs:
     steps:
     - name: Free Up Disk Space
       run: |
-        # Membersihkan file bawaan runner yang tidak diperlukan agar storage makin lega (~140GB+)
         sudo rm -rf /usr/share/dotnet
         sudo rm -rf /usr/local/lib/android
         sudo rm -rf /opt/ghc
@@ -19,26 +18,20 @@ jobs:
         
     - name: Set up SSH Server
       run: |
+        # Set password 'rahasia123' untuk user runner
         echo "runner:rahasia123" | sudo chpasswd
         sudo sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/g' /etc/ssh/sshd_config
         sudo systemctl restart ssh
         
-    - name: Install & Run Ngrok
-      env:
-        NGROK_TOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
+    - name: Install & Run Cloudflare Tunnel
       run: |
-        # Download dan install Ngrok menggunakan script otomatis resmi
-        curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
-        echo "deb [signed-by=/etc/apt/trusted.gpg.d/ngrok.asc] https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
-        sudo apt-get update && sudo apt-get install ngrok -y
-        
-        # Konfigurasi token
-        ngrok config add-authtoken $NGROK_TOKEN
+        # Download Cloudflared resmi
+        curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+        sudo dpkg -i cloudflared.deb
         
         echo "=========================================================="
-        echo "MENYAMBUNGKAN KE NGROK... SILAHKAN CEK DASHBOARD NGROK KAMU"
+        echo "TUNGGU BEBERAPA DETIK, LALU LIHAT LINK DI BAWAH INI!"
         echo "=========================================================="
         
-        # Jalankan tunnel SSH selama 6 jam (21600 detik)
-        ngrok tcp 22 --log=stdout & sleep 21600
-        
+        # Jalankan tunnel khusus SSH selama 6 jam
+        cloudflared tunnel --url tcp://localhost:22 & sleep 21600
