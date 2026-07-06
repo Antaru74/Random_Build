@@ -1,28 +1,43 @@
-name: Remote SSH Runner
+name: Large Storage SSH Runner
 
 on:
-  workflow_dispatch: # Mengaktifkan tombol "Run workflow" manual di GitHub
+  workflow_dispatch:
 
 jobs:
-  ssh-setup:
+  ssh-runner:
     runs-on: ubuntu-latest
     
     steps:
+    - name: Free Up Disk Space
+      run: |
+        # Membersihkan file bawaan runner yang tidak diperlukan agar storage makin lega (~140GB+)
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf /opt/ghc
+        sudo rm -rf "/usr/local/share/boost"
+        df -h
+        
     - name: Set up SSH Server
       run: |
-        # Buat password untuk user 'runner' (ganti 'rahasia123' dengan password pilihanmu)
         echo "runner:rahasia123" | sudo chpasswd
-        
-        # Izinkan login menggunakan password via SSH
         sudo sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/g' /etc/ssh/sshd_config
-        sudo sed -i 's/Include \/etc\/ssh\/sshd_config.d\/\*.conf/# Include \/etc\/ssh\/sshd_config.d\/\*.conf/g' /etc/ssh/sshd_config
         sudo systemctl restart ssh
         
-    - name: Connect to Pinggy Tunnel
+    - name: Install & Run Ngrok
+      env:
+        NGROK_TOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
       run: |
+        # Download dan install Ngrok resmi
+        curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.co.dev/ngrok.asc >/dev/null
+        echo "deb [signed-by=/etc/apt/trusted.gpg.co.dev/ngrok.asc] https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+        sudo apt-get update && sudo apt-get install ngrok -y
+        
+        # Konfigurasi token
+        ngrok config add-authtoken $NGROK_TOKEN
+        
         echo "=========================================================="
-        echo "Tunggu beberapa detik, lalu LIHAT ALAMAT SSH DI BAWAH INI:"
+        echo "MENYAMBUNGKAN KE NGROK... SILAHKAN CEK DASHBOARD NGROK KAMU"
         echo "=========================================================="
         
-        # Membuka tunnel reverse SSH menggunakan Pinggy selama 1 jam (3600 detik)
-        ssh -o StrictHostKeyChecking=no -R 0:localhost:22 tcp@a.pinggy.io "sleep 3600"
+        # Jalankan tunnel SSH selama 6 jam (21600 detik)
+        ngrok tcp 22 --log=stdout & sleep 21600
