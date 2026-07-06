@@ -1,24 +1,24 @@
-name: Download, Stream Compress, and Upload to Gofile (No Token)
+name: Real Highly Compress and Upload to Gofile (No Token)
 
 on:
   workflow_dispatch:
     inputs:
       file_url:
-        description: 'URL file yang akan didownload'
+        description: 'URL file zip game yang akan didownload'
         required: true
         type: string
         default: 'https://example.com/file.zip'
       filename:
-        description: 'Nama file hasil akhir (opsional, contoh: game.7z)'
+        description: 'Nama file hasil akhir (contoh: Game_Ultra.7z)'
         required: false
         type: string
-        default: 'Arsip_Highly_Compressed.7z'
+        default: 'ArmoredCore_Highly_Compressed.7z'
 
 jobs:
   upload:
     runs-on: ubuntu-latest
     steps:
-      - name: Pembersihan Ekstrem (Brutal Free Disk Space)
+      - name: Pembersihan Ekstrem Space Harddisk
         run: |
           sudo rm -rf /usr/share/dotnet
           sudo rm -rf /usr/local/lib/android
@@ -37,28 +37,28 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y p7zip-full
 
-      - name: Download & Compress via Streaming (On-The-Fly)
+      - name: Proses Ekstrak dan Kompresi Ulang (Real Highly Compressed)
         run: |
-          # Menentukan nama file output
-          OUTPUT_NAME="${{ inputs.filename }}"
-          if [ -z "$OUTPUT_NAME" ]; then
-            OUTPUT_NAME="Hasil_Kompresi.7z"
-          fi
+          # 1. Buat folder sementara
+          mkdir -p game_mentah
           
-          echo "Memulai proses Streaming Download + Kompresi Tingkat Tinggi..."
-          echo "File asli tidak akan disimpan di harddisk untuk menghemat space."
+          echo "Mendownload dan langsung mengekstrak isi ZIP ke folder mentah..."
+          # Menggunakan bsdtar (jika tersedia) atau 7z untuk ekstrak langsung dari URL ke folder tanpa simpan .zip nya
+          sudo apt-get install -y bsdtar
+          curl -L "${{ inputs.file_url }}" | bsdtar -xf - -C game_mentah/
           
-          # Trik Utama:
-          # curl -L download file -> dialirkan lewat tanda pipe (|) -> diterima oleh 7z
-          # -si : memerintahkan 7z untuk membaca data dari aliran/stream (Standard Input)
-          # -mx=5 : kompresi tingkat tinggi yang cepat dan aman
-          curl -L "${{ inputs.file_url }}" | 7z a -si -mx=9 -m0=lzma2 -mmt=on "$OUTPUT_NAME"
+          echo "Ekstrak selesai. Melakukan kompresi ulang tingkat tinggi pada isi file asli..."
+          # Sekarang 7z akan mengompres isi file mentah game (bukan file zip-nya).
+          # Ini yang akan membuat ukuran file berkurang drastis!
+          7z a -mx=5 -m0=lzma2 -ms=on "${{ inputs.filename }}" ./game_mentah/*
           
-          echo "Proses Streaming dan Kompresi Selesai!"
-          echo "FILE_NAME=$OUTPUT_NAME" >> $GITHUB_ENV
+          echo "Kompresi ulang berhasil!"
+          echo "FILE_NAME=${{ inputs.filename }}" >> $GITHUB_ENV
+          
+          # Hapus folder mentah untuk melegakan space sebelum upload
+          rm -rf game_mentah
 
       - name: Upload ke Gofile tanpa token
-        id: gofile
         run: |
           SERVER_RESPONSE=$(curl -s https://api.gofile.io/servers)
           SERVER=$(echo $SERVER_RESPONSE | jq -r '.data.servers[0].name')
