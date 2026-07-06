@@ -59,9 +59,8 @@ jobs:
               total_files = len(files)
               
               for index, file in enumerate(files, 1):
-                  # Ekstrak file satu per satu
                   zip_ref.extract(file, extract_dir)
-                  if index % 10 == 0 or index == total_files:
+                  if index % 50 == 0 or index == total_files:
                       print(f"Progress Ekstraksi: {index}/{total_files} file selesai.")
 
           print("Ekstraksi selesai 100%!")
@@ -75,9 +74,8 @@ jobs:
           ls -lh game_mentah
           
           echo "Memulai kompresi ulang dari folder mentah menjadi .7z..."
-          # -mx=5 : Kompresi tinggi yang cepat agar tidak timeout
-          # -m0=lzma2 : Algoritma peras data maksimal
-          7z a -mx=5 -m0=lzma2 -ms=on "${{ inputs.filename }}" ./game_mentah/*
+          # Ditambahkan -mmt=on agar kompresi menggunakan seluruh core CPU secara maksimal (lebih cepat)
+          7z a -mx=5 -m0=lzma2 -mmt=on -ms=on "${{ inputs.filename }}" ./game_mentah/*
           
           echo "Kompresi selesai! Menghapus folder mentah..."
           rm -rf game_mentah
@@ -89,6 +87,7 @@ jobs:
           SERVER=$(echo $SERVER_RESPONSE | jq -r '.data.servers[0].name')
           echo "Menggunakan server: $SERVER"
 
+          # Memastikan file dibaca dari environment yang tepat
           UPLOAD_RESPONSE=$(curl -s -X POST \
             -F "file=@${{ env.FILE_NAME }}" \
             "https://${SERVER}.gofile.io/uploadFile")
