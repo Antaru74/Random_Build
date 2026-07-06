@@ -1,58 +1,107 @@
-name: Download and Upload to Gofile (No Token)
+name: Download, Smart Extract, Highly Compress, and Upload
 
 on:
   workflow_dispatch:
     inputs:
       file_url:
-        description: 'URL file yang akan didownload'
+        description: 'URL file zip game yang akan didownload'
         required: true
         type: string
         default: 'https://example.com/file.zip'
       filename:
-        description: 'Nama file hasil download (opsional)'
+        description: 'Nama file hasil akhir'
         required: false
         type: string
-        default: ''
+        default: 'ArmoredCore_Highly_Compressed.7z'
 
 jobs:
   upload:
     runs-on: ubuntu-latest
     steps:
-      - name: Download file from URL
+      - name: Pembersihan Ekstrem Space Harddisk
         run: |
-          if [ -z "${{ inputs.filename }}" ]; then
-            curl -L -O "${{ inputs.file_url }}"
-          else
-            curl -L -o "${{ inputs.filename }}" "${{ inputs.file_url }}"
-          fi
-          # Ambil nama file yang baru saja di-download
-          echo "FILE_NAME=$(ls -t | head -n1)" >> $GITHUB_ENV
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf /usr/share/swift
+          sudo rm -rf /usr/local/clang
+          sudo docker image prune --all --force
+          sudo apt-get remove --purge -y azure-cli google-chrome-stable microsoft-edge-stable firefox powershell mono-devel
+          sudo apt-get autoremove -y
+          sudo apt-get clean
 
-      - name: Upload ke Gofile tanpa token
-        id: gofile
+      - name: Install 7-Zip
         run: |
-          # 1. Dapatkan server upload terbaik
+          sudo apt-get update
+          sudo apt-get install -y p7zip-full
+
+      - name: Langkah 1: Download File ZIP Asli
+        run: |
+          echo "Memulai download file ZIP asli sebesar 60 GB..."
+          curl -L -o "game_asli.zip" "${{ inputs.file_url }}"
+          echo "Download selesai!"
+
+      - name: Langkah 2 & 3: Ekstrak Pintar & Hapus ZIP Bertahap (Hemat Space)
+        shell: python
+        run: |
+          import zipfile
+          import os
+
+          zip_path = "game_asli.zip"
+          extract_dir = "game_mentah"
+          os.makedirs(extract_dir, exist_ok=True)
+
+          print("Membuka file ZIP dan memulai ekstraksi aman...")
+          with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+              files = zip_ref.namelist()
+              total_files = len(files)
+              
+              for index, file in enumerate(files, 1):
+                  # Ekstrak file satu per satu
+                  zip_ref.extract(file, extract_dir)
+                  if index % 10 == 0 or index == total_files:
+                      print(f"Progress Ekstraksi: {index}/{total_files} file selesai.")
+
+          print("Ekstraksi selesai 100%!")
+          print("Menghapus file ZIP bawaan untuk mengosongkan space...")
+          os.remove(zip_path)
+          print("File ZIP bawaan BERHASIL DIHAPUS.")
+
+      - name: Langkah 4: Kompres Hasil Ekstraksi ke 7z (Real Compression)
+        run: |
+          echo "Memeriksa isi folder hasil ekstraksi:"
+          ls -lh game_mentah
+          
+          echo "Memulai kompresi ulang dari folder mentah menjadi .7z..."
+          # -mx=5 : Kompresi tinggi yang cepat agar tidak timeout
+          # -m0=lzma2 : Algoritma peras data maksimal
+          7z a -mx=5 -m0=lzma2 -ms=on "${{ inputs.filename }}" ./game_mentah/*
+          
+          echo "Kompresi selesai! Menghapus folder mentah..."
+          rm -rf game_mentah
+          echo "FILE_NAME=${{ inputs.filename }}" >> $GITHUB_ENV
+
+      - name: Langkah 5: Upload ke Gofile tanpa token
+        run: |
           SERVER_RESPONSE=$(curl -s https://api.gofile.io/servers)
           SERVER=$(echo $SERVER_RESPONSE | jq -r '.data.servers[0].name')
           echo "Menggunakan server: $SERVER"
 
-          # 2. Upload file (tanpa token)
           UPLOAD_RESPONSE=$(curl -s -X POST \
             -F "file=@${{ env.FILE_NAME }}" \
             "https://${SERVER}.gofile.io/uploadFile")
           
-          # 3. Cek status
           STATUS=$(echo $UPLOAD_RESPONSE | jq -r '.status')
           if [ "$STATUS" != "ok" ]; then
             echo "Upload gagal: $UPLOAD_RESPONSE"
             exit 1
           fi
           
-          # 4. Ambil link halaman download
           DOWNLOAD_URL=$(echo $UPLOAD_RESPONSE | jq -r '.data.downloadPage')
           echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
           
-          # (Opsional) Ambil direct link jika ada
           DIRECT_LINK=$(echo $UPLOAD_RESPONSE | jq -r '.data.directLink // empty')
           if [ -n "$DIRECT_LINK" ]; then
             echo "DIRECT_LINK=$DIRECT_LINK" >> $GITHUB_ENV
@@ -60,8 +109,9 @@ jobs:
 
       - name: Tampilkan link download
         run: |
-          echo "✅ Upload berhasil (tanpa token)!"
-          echo "🔗 Halaman download: ${{ env.DOWNLOAD_URL }}"
+          echo "✅ Semua Alur Berhasil Dieksekusi!"
+          echo "📦 Nama File Baru: ${{ env.FILE_NAME }}"
+          echo "🔗 Halaman download Gofile: ${{ env.DOWNLOAD_URL }}"
           if [ -n "${{ env.DIRECT_LINK }}" ]; then
             echo "⚡ Direct link: ${{ env.DIRECT_LINK }}"
           fi
